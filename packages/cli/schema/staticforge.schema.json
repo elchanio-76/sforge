@@ -1,0 +1,439 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "site": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Absolute production URL, used for canonical links, feeds and sitemaps."
+        },
+        "language": {
+          "default": "en",
+          "type": "string",
+          "pattern": "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "baseUrl"
+      ],
+      "additionalProperties": false
+    },
+    "theme": {
+      "default": "default",
+      "description": "\"default\", a path to a theme directory, or an npm package name.",
+      "type": "string",
+      "minLength": 1
+    },
+    "build": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "outDir": {
+          "default": "dist",
+          "type": "string",
+          "minLength": 1
+        },
+        "cleanUrls": {
+          "default": true,
+          "type": "boolean"
+        },
+        "trailingSlash": {
+          "default": "always",
+          "type": "string",
+          "enum": [
+            "always",
+            "never"
+          ]
+        },
+        "minify": {
+          "default": true,
+          "type": "boolean"
+        },
+        "drafts": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "images": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "formats": {
+          "default": [
+            "avif",
+            "webp"
+          ],
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "avif",
+              "webp",
+              "jpeg",
+              "png"
+            ]
+          }
+        },
+        "widths": {
+          "default": [
+            480,
+            960,
+            1600
+          ],
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 8192
+          }
+        },
+        "quality": {
+          "default": 75,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "collections": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "dir": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Content directory of the collection, relative to the project."
+          },
+          "sortBy": {
+            "default": "date",
+            "type": "string",
+            "enum": [
+              "date",
+              "title",
+              "order"
+            ]
+          },
+          "perPage": {
+            "default": 10,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          },
+          "feed": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "rss": {
+                "default": true,
+                "type": "boolean"
+              },
+              "atom": {
+                "default": true,
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "dir"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "search": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "check": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "wcag": {
+          "default": "2.2-AA",
+          "type": "string",
+          "enum": [
+            "2.1-AA",
+            "2.2-AA",
+            "2.2-AAA"
+          ]
+        },
+        "failOn": {
+          "default": "error",
+          "type": "string",
+          "enum": [
+            "error",
+            "warning"
+          ]
+        },
+        "ignore": {
+          "default": [],
+          "description": "Rule IDs to skip.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "headless": {
+          "default": true,
+          "description": "Run rendered (axe-core + Chromium) checks.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "iac": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "engine": {
+          "default": "tofu",
+          "type": "string",
+          "enum": [
+            "tofu",
+            "terraform"
+          ]
+        },
+        "version": {
+          "description": "Override the pinned engine version.",
+          "type": "string"
+        },
+        "vendor": {
+          "default": false,
+          "description": "Copy HCL modules into the workspace for auditing.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "targets": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "const": "aws"
+              },
+              "region": {
+                "type": "string",
+                "pattern": "^[a-z]{2}(-[a-z]+)+-\\d$"
+              },
+              "domain": {
+                "description": "Custom domain. Omit to use the *.cloudfront.net URL.",
+                "type": "string",
+                "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+              },
+              "hostedZone": {
+                "description": "Route 53 hosted zone for automatic DNS validation and alias records.",
+                "type": "string",
+                "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+              },
+              "previewDomain": {
+                "description": "Wildcard parent for PR previews (pr-<n>.<previewDomain>). Requires a custom domain.",
+                "type": "string",
+                "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+              },
+              "retainVersions": {
+                "default": 10,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "logging": {
+                "default": false,
+                "description": "Enable CloudFront standard access logs.",
+                "type": "boolean"
+              },
+              "wafWebAclArn": {
+                "type": "string",
+                "format": "starts_with",
+                "pattern": "^arn:aws:wafv2:.*"
+              },
+              "ci": {
+                "type": "object",
+                "properties": {
+                  "repo": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$",
+                    "description": "GitHub repository allowed to deploy, as \"owner/repo\"."
+                  },
+                  "branches": {
+                    "default": [
+                      "main"
+                    ],
+                    "description": "Branches whose workflows may deploy.",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "environments": {
+                    "default": [],
+                    "description": "GitHub deployment environments whose workflows may deploy.",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "pullRequests": {
+                    "default": true,
+                    "description": "Allow pull_request workflows to deploy previews.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "repo"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "provider",
+              "region"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "const": "azure"
+              },
+              "subscriptionId": {
+                "description": "Defaults to the subscription of the active credential.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "resourceGroup": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 90
+              },
+              "location": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Azure region, e.g. \"westeurope\"."
+              },
+              "sku": {
+                "default": "Free",
+                "type": "string",
+                "enum": [
+                  "Free",
+                  "Standard"
+                ]
+              },
+              "domain": {
+                "type": "string",
+                "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+              },
+              "dnsZone": {
+                "description": "Azure DNS zone resource ID for automatic CNAME records.",
+                "type": "string"
+              },
+              "ci": {
+                "type": "object",
+                "properties": {
+                  "repo": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$",
+                    "description": "GitHub repository allowed to deploy, as \"owner/repo\"."
+                  },
+                  "branches": {
+                    "default": [
+                      "main"
+                    ],
+                    "description": "Branches whose workflows may deploy.",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "environments": {
+                    "default": [],
+                    "description": "GitHub deployment environments whose workflows may deploy.",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "pullRequests": {
+                    "default": true,
+                    "description": "Allow pull_request workflows to deploy previews.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "repo"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "provider",
+              "resourceGroup",
+              "location"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "site"
+  ],
+  "additionalProperties": false,
+  "description": "staticforge project configuration",
+  "$id": "urn:staticforge:schema:config:v1",
+  "title": "staticforge configuration"
+}

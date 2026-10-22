@@ -1,0 +1,8 @@
+import { readFileSync } from 'node:fs';
+
+/** The CLI package version, read from package.json (works from both src/ and dist/). */
+export const VERSION: string = (
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  }
+).version;

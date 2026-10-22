@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.sforge/state/
+.sforge/iac/**/.terraform/
+*.log
+.DS_Store

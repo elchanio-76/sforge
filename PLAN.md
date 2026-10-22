@@ -18,7 +18,8 @@ Decisions made: TypeScript/Node; provision + deploy with **HCL modules run by Op
 | Concern | Choice |
 |---|---|
 | Runtime / lang | Node 22 LTS, TypeScript (strict), ESM |
-| Monorepo | pnpm workspaces + Turborepo (optional); `tsup` for bundling |
+| Monorepo | pnpm workspaces (pnpm 12, pinned via `packageManager`); `tsc -b` project references for builds (bundling deferred until publish) |
+| Language version | TypeScript 6.0.x (typescript-eslint supports < 6.1; TypeScript 7 adopted once tooling supports it) |
 | CLI | `commander` (subcommands), `zod` for config/flag validation |
 | Config | `staticforge.config.ts` / `.json` / `.yaml` loaded with `c12` or custom loader; JSON Schema exported for editors/agents |
 | Markdown → HTML | unified: `remark-parse`, `remark-gfm`, `remark-frontmatter`, `remark-rehype`, `rehype-slug`, `rehype-autolink-headings`, `shiki` (code highlight), `rehype-stringify` |
@@ -178,7 +179,7 @@ Shared behavior: manifest diffing, cache-header classes (hashed assets → `publ
   - Terraform resources: `aws_cloudfront_key_value_store`, `aws_cloudfront_function` (`cloudfront-js-2.0`, with `key_value_store_associations`). The initial `active` key is seeded with `aws_cloudfrontkeyvaluestore_key` using `lifecycle { ignore_changes = [value] }`, so later deploys (SDK `PutKey`) never cause drift.
 - **Optional custom domain**: ACM certificate in **us-east-1** (aliased provider), DNS validation (`aws_acm_certificate_validation`). When `hostedZone` is set, Route 53 alias A/AAAA records are added (plus a wildcard `*.preview.<domain>` for PR previews). Otherwise the required CNAMEs are printed and provisioning waits/polls for validation (`--no-wait` option).
 - Optional access logs bucket (`logging: true`) and optional WAF web ACL ARN attachment.
-- **GitHub OIDC deploy role** (`ciRole: { repo: 'org/repo', branches: ['main'] }`): IAM OIDC provider (reused if one exists) plus a least-privilege role (S3 Put/Delete/List on the bucket, `cloudfront-keyvaluestore:PutKey/DescribeKeyValueStore`, `cloudfront:CreateInvalidation` on the distribution). The trust policy is pinned to `repo:org/repo:ref:refs/heads/main` and `environment:` claims.
+- **GitHub OIDC deploy role** (target key `ci: { repo: 'org/repo', branches: ['main'], environments: [], pullRequests: true }`, shared by both providers): IAM OIDC provider (reused if one exists) plus a least-privilege role (S3 Put/Delete/List on the bucket, `cloudfront-keyvaluestore:PutKey/DescribeKeyValueStore`, `cloudfront:CreateInvalidation` on the distribution). The trust policy is pinned to `repo:org/repo:ref:refs/heads/main` and `environment:` claims.
 - Module outputs (bucket, distributionId, kvsArn, domain, ciRoleArn) are cached in `.sforge/state/<target>.json` (non-secret).
 - Bucket objects under `v/` are **not** managed by Terraform. The lifecycle rule and the deployer manage them, and `force_destroy` is only set during `sforge destroy`.
 
@@ -195,7 +196,7 @@ Shared behavior: manifest diffing, cache-header classes (hashed assets → `publ
 
 ## 10. Azure provider (`providers/azure`)
 **Provisioning**: HCL module `azure/terraform/modules/site` (`hashicorp/azurerm` 4.x): `azurerm_resource_group` (optional/existing), `azurerm_static_web_app` (Free/Standard, no repo linkage, `preview_environments_enabled`), `azurerm_static_web_app_custom_domain` (cname-delegation or dns-txt-token validation; outputs the validation record to print). An optional `azurerm_dns_cname_record` is added if an Azure DNS zone is given. Writes a generated **`staticwebapp.config.json`** into the build: `navigationFallback` off, `responseOverrides` 404 → `/404.html`, `globalHeaders` (same security headers as AWS), route-level cache headers matching the cache classes, `trailingSlash` setting.
-**CI identity**: module `ci-oidc` (`hashicorp/azuread` + `azurerm`): `azuread_application` + service principal + `azuread_application_federated_identity_credential` for `repo:org/repo:environment:<env>` (and `pull_request`), `azurerm_role_assignment` scoped to the SWA resource and the state container. The module is skipped with a clear message (plus the equivalent `az` commands) if the caller lacks Graph permissions (`ciIdentity: false`).
+**CI identity**: module `ci-oidc` (`hashicorp/azuread` + `azurerm`): `azuread_application` + service principal + `azuread_application_federated_identity_credential` for `repo:org/repo:environment:<env>` (and `pull_request`), `azurerm_role_assignment` scoped to the SWA resource and the state container. The module is skipped with a clear message (plus the equivalent `az` commands) if the caller lacks Graph permissions, or when the target has no `ci` block.
 **Deploy**: fetch the deployment token (`listStaticSiteSecrets`) at runtime using the OIDC/Azure credential (never stored), then upload `dist/` via the SWA deployment client (`@azure/static-web-apps-cli` `deploy` with `--app-location dist --env production`, skip-build).
 **Previews**: `--preview pr-42` → SWA named environment `pr-42` (native). `preview-destroy` deletes the environment build.
 **Rollback**: SWA has no native version switch, so the tool keeps the last N build archives (`dist` tarballs) in a configured storage container *or* rebuilds from a git ref (`sforge rollback prod --to <gitSha>` checks out the ref into a temp worktree, builds and deploys). This is documented as slower than AWS.
@@ -218,7 +219,9 @@ sforge status <target>
 sforge destroy <target> --confirm <target-name>
 sforge ci init [--targets staging,prod]                              # emit GitHub Actions workflows
 sforge theme list|validate <path>
-sforge schema [config|diagnostics|output]                            # print JSON Schemas for agents
+sforge schema config|output|diagnostics                              # print JSON Schemas for agents (diagnostics arrives with M3)
+sforge config validate|show                                          # validate / print resolved config
+sforge version
 sforge mcp                                                            # MCP stdio server
 ```
 Global flags: `--json` (one JSON document on stdout, logs on stderr), `--quiet`, `--verbose`, `--cwd`, `--config`, `--no-color`, `--non-interactive` (auto when `CI=true` or no TTY. Destructive operations then require `--yes`/`--confirm`). `deploy` runs `build` + `check` first by default and refuses if the check fails (`--no-check` to override).
@@ -240,7 +243,7 @@ Generates `.github/workflows/`:
 
 ## 15. Milestones
 0. **Step 0** ✅: this plan is kept in `PLAN.md` as the project's living design document. Update it when decisions change.
-1. **M0 Scaffold**: monorepo, tooling, CI for the repo itself, `core` config + logger + error codes, `cli` skeleton with `--json`/exit codes.
+1. **M0 Scaffold** ✅: monorepo, tooling, CI for the repo itself, `core` config + logger + error codes, `cli` skeleton with `--json`/exit codes, `config validate|show`, `schema config|output`, `version`.
 2. **M1 Build**: markdown pipeline, HTML detection/wrapping, Nunjucks render, default theme, static/assets copy, `sforge build`, `init`, `new`.
 3. **M2 Preview**: `dev` (watch + live reload) and `preview`.
 4. **M3 Checker**: rule engine, static rules, html-validate integration, reporters, autofix with source mapping. Then headless axe/Playwright.
