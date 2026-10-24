@@ -17,7 +17,7 @@ Decisions made: TypeScript/Node; provision + deploy with **HCL modules run by Op
 ## 1. Tech stack
 | Concern | Choice |
 |---|---|
-| Runtime / lang | Node 22 LTS, TypeScript (strict), ESM |
+| Runtime / lang | Node `^22.22 \|\| >=24.8` (the floor html-validate 11 needs), TypeScript (strict), ESM |
 | Monorepo | pnpm workspaces (pnpm 12, pinned via `packageManager`); `tsc -b` project references for builds (bundling deferred until publish) |
 | Language version | TypeScript 6.0.x (typescript-eslint supports < 6.1; TypeScript 7 adopted once tooling supports it) |
 | CLI | `commander` (subcommands), `zod` for config/flag validation |
@@ -28,7 +28,7 @@ Decisions made: TypeScript/Node; provision + deploy with **HCL modules run by Op
 | Assets | `sharp` (images → AVIF/WebP + srcset), `esbuild` (JS bundle/minify), `lightningcss` (CSS minify/autoprefix), content-hash fingerprinting |
 | Search | Pagefind (post-build index, runs fully client side) |
 | Dev server | `node:http` static server + `chokidar` 5 watcher + Server-Sent Events live reload (no WebSocket dependency); full rebuild into a temp dir per change (incremental rebuilds deferred to M8) |
-| Checker | `html-validate` (static, well-formedness, a11y rules), `axe-core` via **Playwright** headless Chromium (rendered WCAG 2.2 AA), custom rules (links, landmarks, heading order, alt, media captions), `linkinator`-style internal link check |
+| Checker | `html-validate` 11 (`standard` + `a11y` + `document` presets), `axe-core` in headless Chromium driven by `playwright-core` (no browser download at install; `chromium-headless-shell` installed on demand), custom source and output rules (links, landmarks, headings, lang/title, media), `diff` for `--dry-run` |
 | Provisioning (IaC) | **HCL modules** shipped in the package, run by **OpenTofu** (default; pinned version, downloaded and SHA256-verified into `~/.cache/staticforge/bin`) or **Terraform** from PATH (`iac.engine`). Driven by spawning the CLI with `-json` output, which is parsed into progress events and outputs |
 | AWS runtime | AWS SDK v3 (`client-s3`, `client-cloudfront`, `client-cloudfront-keyvaluestore`, `client-sts`) for deploy, rollback and previews |
 | Azure runtime | `@azure/arm-appservice` (Static Sites secrets/environments), `@azure/identity`, SWA content deploy via `@azure/static-web-apps-cli` deploy client |
@@ -47,8 +47,9 @@ packages/
   build/           # discovery, routing, link resolution, orchestration, output + manifest, init/new scaffolding
   assets/          # image/js/css processing, fingerprinting, manifest
   site-features/   # nav, sitemap/robots, collections, tags, pagination, RSS/Atom, Pagefind
-  checker/         # rule engine, static + headless checks, autofixers, reporters
-  dev-server/      # production-equivalent static server, watcher, SSE live reload, problems overlay
+  server/          # static file server with production URL semantics (resolveRequest); used by dev, preview and the checker
+  checker/         # source/output/rendered rules, de-duplication, autofixes, reporters (pretty/json/sarif/junit)
+  dev-server/      # watcher, temp-dir builds, SSE live reload, problems overlay, preview
   providers/
     provider-api/  # Provider interface + shared deploy logic (diffing, manifest)
     iac/           # engine resolver/downloader, workspace generator, tofu/terraform runner, state bootstrap
@@ -105,7 +106,7 @@ Front-matter (YAML): `title` (required), `description`, `layout`, `date`, `tags`
      - `rehype-video`: `![caption](x.mp4)` produces `<figure><video controls>` with `<figcaption>`, plus `<track kind="captions">` when a sibling `x.vtt` exists (implemented in M1; a `::video{}` directive is deferred).
      - `rehype-external-links`: `rel="noopener noreferrer"` and visually hidden "(opens in new tab)" text when the target is `_blank`.
      - `rehype-heading-shift`: content starts at h2 when the layout supplies h1 (only one h1 per page).
-   - `.html` → parse5/rehype. **Detection**: a full document (has `<html>` or `<!doctype>`) passes through with the theme CSS and runtime assets injected into `<head>`. A fragment, or a full document with a YAML `---` front-matter header, is wrapped in a layout. parse5 reports tokenizer errors (duplicate attributes, bad entities) as `html-parse` warnings; tree-construction problems are left to the M3 checker (html-validate).
+   - `.html` → parse5/rehype. **Detection**: a full document (has `<html>` or `<!doctype>`) passes through with the theme CSS and runtime assets injected into `<head>`. A fragment, or a full document with a YAML `---` front-matter header, is wrapped in a layout. parse5 reports tokenizer errors (duplicate attributes, bad entities) as `html-parse` warnings; tree-construction problems are reported by the checker (html-validate). GFM task-list checkboxes are wrapped in a `<label>` with their item text (M3), so they have an accessible name.
    - **Link resolution** (M1): references are written relative to the source file and rewritten for the built site: `other.md` → page URL, co-located files → root-relative, `../../assets/x` → `/assets/x`, `../../static/x` → `/x`. Broken page links → `link-broken` warnings.
 4. **Render** with Nunjucks layouts: `base.njk` (doctype, `<html lang>`, meta charset/viewport, title, description, canonical, OG, skip link, landmarks `header/nav/main#main/footer`), plus `page`, `post`, `list`, `tag` layouts. Context: `page`, `site`, `nav`, `collections`, `data`, `assets()` helper.
 5. **Site features**: nav tree (dir structure + front-matter order; `aria-current="page"`; breadcrumbs with `nav aria-label="Breadcrumb"`), collections with pagination (`rel=prev/next`), tag pages, RSS 2.0 + Atom, `sitemap.xml`, `robots.txt`, `404.html`.
@@ -122,25 +123,36 @@ Front-matter (YAML): `title` (required), `description`, `layout`, `date`, `tags`
 - JS: tiny optional module for the mobile nav toggle (`aria-expanded`) and the Pagefind UI.
 - Theme contract documented in `docs/themes.md` (required blocks, available context, `theme.json` manifest: name, version, layouts, default layout).
 
-## 6. Checker (`packages/checker`) — `sforge check [--fix] [--headless] [--json]`
-**Rule engine**: each rule is `{ id, severity, wcag?: '1.1.1', run(ctx) → Diagnostic[], fix?(ctx) → Patch[] }`. Diagnostics have the shape `{ ruleId, severity, file, line, col, message, wcag, fixable, helpUrl }`.
+## 6. Checker (`packages/checker`) — `sforge check [--fix [--dry-run]] [--headless|--no-headless] [--pages <globs…>] [--format pretty|json|sarif|junit] [--output <file>] [--fail-on] [--drafts]` ✅ (M3)
+User documentation: `docs/checker.md`.
 
-Layers:
-1. **Source checks** (on `content/`): front-matter schema, missing title/description, markdown image alt, broken relative links, heading jumps. Fixes are written back to the **source** files (MD/HTML) so they persist.
-2. **Static output checks** (on `dist/` via html-validate + custom rules): well-formedness, duplicate ids, `lang`, `<title>`, a single `<h1>`, heading order, landmarks, skip link, `img` alt, `video` captions track, empty links/buttons, form labels, `target=_blank` rel, valid ARIA, internal link and asset 404s, sitemap validity, meta viewport not blocking zoom.
-3. **Rendered checks** (`--headless`, default in CI): Playwright drives Chromium over a temporary local server. It runs axe-core with the `wcag2a,wcag2aa,wcag21a,wcag21aa,wcag22aa` tags on every page (or a sample through `--pages`), at both light/dark schemes and a mobile viewport. It catches color contrast, focus order, target size (2.5.8) and reflow.
+`sforge check` builds into a temporary directory (never `build.outDir`), checks the result and removes it. `checkBuild()` checks an existing `BuildResult`; `sforge dev` runs it without the browser after every rebuild and feeds the overlay. Findings come from four **layers**, and each problem is reported once, by the most precise layer (source > build > output > rendered): for page-level rules (`html-lang`, `document-title`, `heading-order`, `img-alt`, `iframe-title`, `meta-viewport`, `video-captions`) by rule and page; for link rules by rule, page and resolved target.
 
-**Autofix** (`--fix`, with `--dry-run` producing a unified diff): add a missing `lang`; insert `<title>` from the h1/front-matter; normalize heading levels; add `rel="noopener noreferrer"`; generate `id`s and deduplicate them; add width/height to images; add `alt=""` only for images marked decorative; flag others as non-fixable and **never invent alt text**; add `aria-label` on landmarks when there are duplicates; fix trailing-slash link mismatches. Fixes apply to sources when traceable (positions are kept through source maps from MD/HTML → hast `position`), otherwise to the output with a warning.
+1. **build**: the build's own diagnostics (front-matter, `img-alt`, `video-captions`, `link-broken` for page sources, `heading-shift`, …), with source positions.
+2. **source**: rules that re-parse the author's file (Markdown via remark, HTML via `hast-util-from-html` with `verbose` attribute positions; raw HTML inside Markdown is parsed per node) so they have exact positions and can carry **text edits**. Front-matter is blanked line for line, so body positions map back to the file (plus a stripped BOM on line 1).
+3. **output**: custom rules on the built HTML (`html-lang`, `document-title`, `meta-viewport`, `landmark-main`, `skip-link`, `video-captions`, `iframe-title`, `link-broken`/`link-fragment`/`link-trailing-slash` resolved with the same `resolveRequest` as the servers) and html-validate (`html/<rule>`; a11y rules carry WCAG criteria; style-only rules downgraded to warnings; `require-sri` only for cross-origin; messages a staticforge rule covers are dropped or aliased, e.g. `heading-level` → `heading-order`, `wcag/h37` → `img-alt`). Findings name the page's source (`file`), its `url` and a CSS `selector`, but no line: rendered pages don't map back to template or content lines.
+4. **rendered** (`--headless`; default `check.headless: true`): `playwright-core` launches Chromium (headless shell) against `@staticforge/server` on a free port; every page is loaded in three contexts (desktop light, desktop dark, mobile 375×812), axe-core runs with the tags for `check.wcag` (`2.2-AA` → `wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa`), and results are merged across modes ("(dark only)"). Impact critical/serious → error, otherwise warning. axe rules that match a staticforge rule are aliased (`image-alt` → `img-alt`, `html-has-lang` → `html-lang`, …), the rest are `axe/<id>`. Uncaught page errors → `script-error`. 4 pages in parallel.
+   - **Chromium**: not downloaded at install. When missing, the hint names `npx playwright-core@<bundled version> install --only-shell chromium`; `SFORGE_CHROMIUM_PATH` selects another binary. Missing browser → `headless-skipped` warning, except with an explicit `--headless` or `CI` set → `SF_BROWSER_MISSING` (exit 2), so CI never silently skips.
 
-Reporters: `pretty` (TTY), `json` (stable schema), `sarif` (GitHub code scanning annotations), `junit`.
-Exit codes: `0` clean, `1` errors at or above `failOn`, `2` usage/config error, `3` internal error.
+**Autofix** (`--fix`; `--dry-run` returns a unified diff and changes nothing): fixes are text edits to **sources** only, applied from the end of each file, skipping overlaps; then the site is checked again. Implemented in M3:
+- `html-lang`: add `lang="<site.language>"` (or fill an empty one) on `<html>` of HTML documents;
+- `document-title`: add a `<title>` from the `<h1>` (else the file name) after leading `<meta>` elements, or fill an empty one;
+- `heading-order`: change the `#` count of Markdown ATX headings that skip a level, mirroring the build's title/demotion logic (`##`, `####`, `#####` → `##`, `###`, `####`);
+- `link-trailing-slash`: rewrite links that redirect (`/about` → `/about/`, or the reverse for `trailingSlash: never`) in Markdown links/definitions and `href`s.
+
+**Never invents alt text.** Not implemented, with reasons: `rel="noopener"` (browsers imply it for `target=_blank`; the build already adds the new-tab notice to content links); id de-duplication (renaming ids breaks `#fragment` links elsewhere); image width/height (moves to M4, where sharp reads dimensions during the build); landmark `aria-label`s and decorative `alt=""` (need author intent). Theme templates are never edited.
+
+**Reporters**: `pretty` (grouped by file; a problem at the same selector on several pages is listed once, as likely theme-caused), `json` (the `CheckResult`, also the `--json` envelope's `data`; schema: `sforge schema diagnostics`, `$id urn:staticforge:schema:diagnostics:v1`), `sarif` 2.1.0 (URIs relative to the git root; problems without a source fall back to the config file; stable `partialFingerprints`), `junit` (failures = at or above `failOn`). `--output` writes the report to a file; `--json` with sarif/junit requires `--output`.
+
+**Diagnostic shape** (shared with the build): `{ ruleId, severity, message, file?, line?, column?, url?, selector?, wcag?, fixable?, hint?, helpUrl? }`. Config: `check: { wcag, failOn, ignore (rule IDs, trailing * for prefixes such as "axe/*"), headless }`.
+Exit codes: `0` clean, `1` problems at or above `failOn`, `2` usage/config error or missing browser where required, `3` internal error.
 
 ## 7. Dev server — `sforge dev [--port 4321] [--open] [--host [addr]] [--drafts]` ✅ (M2)
 - Each build goes into a fresh directory under the OS temp dir (never `build.outDir`); the server switches to it atomically and deletes the previous one after a grace period. A failed build (e.g. invalid config) keeps serving the last good one.
-- **URL semantics match production** via one pure function, `resolveRequest` (`packages/dev-server/src/resolve.ts`): `/x/` → `x/index.html`; `/x` → 301 `/x/` (or `x.html` with `trailingSlash: never`); unknown → `404.html` with status 404; dot-paths (`.sforge/`) and symlinks escaping the root are never served. The M5 CloudFront function must pass the same table of tests. Byte ranges are supported for video.
+- **URL semantics match production** via one pure function, `resolveRequest` (`packages/server/src/resolve.ts`; moved to `@staticforge/server` in M3 so the checker can share it): `/x/` → `x/index.html`; `/x` → 301 `/x/` (or `x.html` with `trailingSlash: never`); unknown → `404.html` with status 404; dot-paths (`.sforge/`) and symlinks escaping the root are never served. The M5 CloudFront function must pass the same table of tests. Byte ranges are supported for video.
 - chokidar watches the project (ignoring `build.outDir`, dot-dirs, `node_modules`); changes are debounced (≥ 60ms, longer than chokidar's 50ms per-file throttle, so a quick second save is never lost); config changes reload the config.
-- Live reload over SSE (`/__sforge/events`): the client (`packages/dev-server/client/live-client.js`) reloads, or hot-swaps stylesheets when only CSS changed, and shows an accessible overlay of the current page's errors/warnings (build diagnostics now; checker results once M3 lands).
-- `sforge preview [--port 4322] [--dir]` serves an existing build with the same semantics, without the client (used by headless checks in M3).
+- Live reload over SSE (`/__sforge/events`): the client (`packages/dev-server/client/live-client.js`) reloads, or hot-swaps stylesheets when only CSS changed, and shows an accessible overlay of the current page's errors/warnings: build diagnostics plus the checker's static rules (run after every build).
+- `sforge preview [--port 4322] [--dir]` serves an existing build with the same semantics, without the client.
 - Both listen on 127.0.0.1 by default; `--host` without a value binds 0.0.0.0 with a warning. Under `--json` they write the envelope when ready, then run until SIGINT/SIGTERM (exit 0).
 
 ## 8a. IaC layer (`providers/iac`)
@@ -224,7 +236,7 @@ sforge status <target>
 sforge destroy <target> --confirm <target-name>
 sforge ci init [--targets staging,prod]                              # emit GitHub Actions workflows
 sforge theme list|validate <path>
-sforge schema config|output|diagnostics                              # print JSON Schemas for agents (diagnostics arrives with M3)
+sforge schema config|output|diagnostics                              # print JSON Schemas for agents
 sforge config validate|show                                          # validate / print resolved config
 sforge version
 sforge mcp                                                            # MCP stdio server
@@ -251,13 +263,13 @@ Generates `.github/workflows/`:
 1. **M0 Scaffold** ✅: monorepo, tooling, CI for the repo itself, `core` config + logger + error codes, `cli` skeleton with `--json`/exit codes, `config validate|show`, `schema config|output`, `version`.
 2. **M1 Build** ✅: markdown pipeline, HTML detection/wrapping, link resolution, Nunjucks render, default theme (+ `templates/` overrides, `data/`), static/assets copy, build manifest, basic top-level nav, `sforge build`, `init` (non-interactive; `--format ts|json|yaml`), `new page|post`, `examples/basic-site`, docs/content.md + docs/themes.md.
 3. **M2 Preview** ✅: `dev` (watch + SSE live reload + CSS hot-swap + problems overlay) and `preview`, production-equivalent request resolution, per-run isolated test temp dirs.
-4. **M3 Checker**: rule engine, static rules, html-validate integration, reporters, autofix with source mapping. Then headless axe/Playwright.
+4. **M3 Checker** ✅: `@staticforge/checker` (source/output/rendered layers with de-duplication, html-validate, axe-core via playwright-core in light/dark/mobile), source autofixes with `--dry-run` diffs, pretty/json/sarif/junit reporters, `sforge check`, `schema diagnostics`, checker results in the dev overlay, `@staticforge/server` split out, GFM task-list labels, Node floor raised to 22.22/24.8, Vitest resolving workspace packages to sources (`ssr.resolve.conditions`; tests previously loaded sibling packages' `dist/`), Chromium installed in CI.
 5. **M4 Site features + assets**: nav/breadcrumbs, sitemap/robots/404, collections/tags/pagination/RSS/Atom, sharp images, esbuild/lightningcss, fingerprinting, Pagefind.
 6. **M5a IaC layer**: engine resolver/downloader (tofu default, terraform optional), workspace generator, runner with `-json` parsing, state bootstrap modules (S3 native lock / Azure blob), `provision --diff`, `status` drift, `iac` passthrough.
 7. **M5b AWS**: HCL modules (S3 + OAC + CloudFront + KVS function + headers + optional ACM/Route 53 + OIDC role), SDK deployer, versions/rollback, previews.
 8. **M6 Azure**: HCL modules (SWA + custom domain + azuread OIDC), `staticwebapp.config.json` generation, SDK deploy, preview envs, rollback-by-rebuild.
 9. **M7 CI/CD + MCP**: `ci init` workflows, MCP server, JSON schemas, docs.
-10. **M8 Hardening**: live integration tests, performance (parallel rendering via worker threads), docs site built *with* sforge (dogfooding), npm publish.
+10. **M8 Hardening**: live integration tests, performance (parallel rendering via worker threads; incremental dev rebuilds and checking only affected pages), a browser test of the live-reload client, docs site built *with* sforge (dogfooding), npm publish.
 
 ## 16. Verification (end to end)
 1. `pnpm -r test` (unit + snapshot + checker fixtures) plus `tofu test` for the HCL modules and `pnpm -r typecheck`.

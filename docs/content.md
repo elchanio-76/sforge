@@ -61,7 +61,7 @@ Write links and image paths relative to the source file, as your editor sees the
 | `![Logo](../../assets/logo.svg)`      | `/assets/logo.svg`  |
 | `[CV](../../static/cv.pdf)`           | `/cv.pdf`           |
 
-Root-relative URLs (`/assets/site.css`) and absolute URLs are left as they are. Links to missing pages are reported as `link-broken` warnings.
+Root-relative URLs (`/assets/site.css`) and absolute URLs are left as they are. Links to Markdown sources that match no page are reported as `link-broken` warnings by the build; `sforge check` verifies every other internal link, image and asset against the built site (see [checker.md](checker.md)).
 
 **Images** are lazy-loaded. Missing alt text is an error. Empty alt text (`![](x.png)`) is a warning unless the image has `role="presentation"`.
 

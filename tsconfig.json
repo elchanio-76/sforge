@@ -14,6 +14,12 @@
       "path": "packages/build"
     },
     {
+      "path": "packages/server"
+    },
+    {
+      "path": "packages/checker"
+    },
+    {
       "path": "packages/dev-server"
     },
     {

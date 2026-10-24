@@ -31,6 +31,7 @@ export const ErrorCode = {
   UnsafePath: 'SF_UNSAFE_PATH',
   NotBuilt: 'SF_NOT_BUILT',
   PortInUse: 'SF_PORT_IN_USE',
+  BrowserMissing: 'SF_BROWSER_MISSING',
   Internal: 'SF_INTERNAL',
 } as const;
 
@@ -48,6 +49,7 @@ const exitCodeFor: Record<ErrorCode, ExitCode> = {
   SF_UNSAFE_PATH: ExitCode.Usage,
   SF_NOT_BUILT: ExitCode.Usage,
   SF_PORT_IN_USE: ExitCode.Usage,
+  SF_BROWSER_MISSING: ExitCode.Usage,
   SF_INTERNAL: ExitCode.Internal,
 };
 

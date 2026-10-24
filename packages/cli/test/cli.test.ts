@@ -258,6 +258,97 @@ describe('sforge CLI', () => {
     expect(result.stderr).toContain('must be an integer from 0 to 65535');
   });
 
+  it('checks a site, with reports for people, CI and agents, and fixes it', async () => {
+    const dir = projectWith(validConfig);
+    mkdirSync(join(dir, 'content'));
+    writeFileSync(join(dir, 'content/index.md'), '# Home\n\n## A\n\n#### B\n\n[gone](/gone/)\n');
+
+    const human = await sforge(['check', '--no-headless'], { cwd: dir });
+    expect(human.exitCode).toBe(1);
+    expect(human.stdout).toContain(
+      'content/index.md\n  5:1     warning Heading level skips from h2 to h4',
+    );
+    expect(human.stdout).toContain('error   Link to /gone/ does not match any page');
+    expect(human.stdout).toMatch(/✖ 1 error, 1 warning, 0 info in 2 pages \(static checks only/);
+
+    const json = await sforge(['check', '--no-headless', '--json'], { cwd: dir });
+    expect(json.exitCode).toBe(1);
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      command: 'check',
+      ok: false,
+      data: { rendered: 'off', summary: { error: 1, warning: 1 } },
+    });
+
+    const sarif = await sforge(
+      ['check', '--no-headless', '--json', '--format', 'sarif', '--output', 'check.sarif'],
+      { cwd: dir },
+    );
+    expect(sarif.exitCode).toBe(1);
+    expect(JSON.parse(sarif.stdout)).toMatchObject({ command: 'check', ok: false });
+    const log = JSON.parse(readFileSync(join(dir, 'check.sarif'), 'utf8'));
+    expect(log.runs[0].results.map((r: { ruleId: string }) => r.ruleId)).toEqual([
+      'heading-order',
+      'link-broken',
+    ]);
+
+    const dry = await sforge(['check', '--no-headless', '--fix', '--dry-run'], { cwd: dir });
+    expect(dry.stdout).toContain('-#### B\n+### B');
+    expect(readFileSync(join(dir, 'content/index.md'), 'utf8')).toContain('#### B');
+
+    const fixed = await sforge(['check', '--no-headless', '--fix'], { cwd: dir });
+    expect(fixed.stdout).toContain('Fixed 1 problem in 1 file: content/index.md');
+    expect(readFileSync(join(dir, 'content/index.md'), 'utf8')).toContain('\n### B\n');
+  });
+
+  it('rejects conflicting check options as usage errors', async () => {
+    const dir = projectWith(validConfig);
+    const dryRun = await sforge(['check', '--dry-run'], { cwd: dir });
+    expect(dryRun.exitCode).toBe(2);
+    expect(dryRun.stderr).toContain('--dry-run requires --fix');
+
+    const both = await sforge(['check', '--json', '--format', 'junit'], { cwd: dir });
+    expect(both.exitCode).toBe(2);
+    expect(JSON.parse(both.stdout).error).toMatchObject({
+      code: 'SF_USAGE',
+      hint: 'Write the junit report to a file with --output <file>.',
+    });
+  });
+
+  it('requires Chromium for --headless and in CI, and otherwise skips rendered checks', async () => {
+    const dir = projectWith(validConfig);
+    mkdirSync(join(dir, 'content'));
+    writeFileSync(join(dir, 'content/index.md'), '# Home\n');
+    const missing = { SFORGE_CHROMIUM_PATH: '/nonexistent/chromium' };
+
+    const explicit = await sforge(['check', '--headless', '--json'], {
+      cwd: dir,
+      variables: missing,
+    });
+    expect(explicit.exitCode).toBe(2);
+    expect(JSON.parse(explicit.stdout).error.code).toBe('SF_BROWSER_MISSING');
+
+    const ci = await sforge(['check', '--json'], {
+      cwd: dir,
+      variables: { ...missing, CI: 'true' },
+    });
+    expect(JSON.parse(ci.stdout).error.code).toBe('SF_BROWSER_MISSING');
+
+    const local = await sforge(['check', '--json'], { cwd: dir, variables: missing });
+    expect(local.exitCode).toBe(0);
+    expect(JSON.parse(local.stdout).data).toMatchObject({
+      rendered: 'skipped',
+      diagnostics: [{ ruleId: 'headless-skipped' }],
+    });
+  });
+
+  it('prints the check report schema', async () => {
+    const result = await sforge(['schema', 'diagnostics']);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      $id: 'urn:staticforge:schema:diagnostics:v1',
+      $defs: { diagnostic: { required: ['ruleId', 'severity', 'message'] } },
+    });
+  });
+
   it('keeps the committed config schema in sync', async () => {
     const committed = JSON.parse(
       readFileSync(new URL('../schema/staticforge.schema.json', import.meta.url), 'utf8'),

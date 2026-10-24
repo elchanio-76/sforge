@@ -1,0 +1,24 @@
+{
+  "name": "@staticforge/server",
+  "version": "0.0.0",
+  "description": "Static file server with staticforge's production URL semantics",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": "^22.22.0 || >=24.8.0"
+  },
+  "dependencies": {
+    "@staticforge/core": "workspace:*",
+    "mime": "^4.1.1"
+  }
+}

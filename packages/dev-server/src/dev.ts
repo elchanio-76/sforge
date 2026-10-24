@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { type FSWatcher, watch } from 'chokidar';
 import { type BuildResult, buildSite } from '@staticforge/build';
+import { checkBuild, finalizeDiagnostics } from '@staticforge/checker';
 import {
   type Diagnostic,
   type LoadedConfig,
@@ -10,8 +11,8 @@ import {
   type SerializedError,
   toSforgeError,
 } from '@staticforge/core';
+import { type StaticServer, startStaticServer } from '@staticforge/server';
 import { LiveReload, type LiveState, injectClient } from './live-reload.js';
-import { type StaticServer, startStaticServer } from './static-server.js';
 
 export interface DevServerOptions {
   /** Loads (and re-loads, when it changes) the project config. */
@@ -25,6 +26,8 @@ export interface DevServerOptions {
   onBuild?: (state: DevBuildState) => void;
   /** Milliseconds to wait for more file changes before rebuilding (minimum 60). */
   debounceMs?: number;
+  /** Run the checker's static rules after each build (default true). */
+  check?: boolean;
 }
 
 export interface DevBuildState {
@@ -33,6 +36,8 @@ export interface DevBuildState {
   /** Project-relative paths that triggered this build (empty for the first). */
   changed: string[];
   result?: BuildResult;
+  /** Build diagnostics plus static checker findings, de-duplicated. */
+  diagnostics: Diagnostic[];
   /** Set when the build could not run; the previous build keeps being served. */
   error?: SerializedError;
 }
@@ -64,7 +69,7 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
 
   let servedDir = join(scratch, 'empty');
   let buildCount = 0;
-  let state: DevBuildState = { id: 0, ok: false, changed: [] };
+  let state: DevBuildState = { id: 0, ok: false, changed: [], diagnostics: [] };
   let waiters: ((s: DevBuildState) => void)[] = [];
   const retiring = new Set<NodeJS.Timeout>();
 
@@ -72,7 +77,7 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
     const liveState: LiveState = {
       id: state.id,
       cssOnly,
-      diagnostics: state.result?.diagnostics ?? [],
+      diagnostics: state.diagnostics,
       pages: state.result?.pages.map((p) => ({ url: p.url, source: p.source })) ?? [],
       ...(state.error !== undefined && { error: state.error }),
     };
@@ -85,7 +90,7 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
       try {
         loaded = await options.loadConfig();
       } catch (error) {
-        state = { id, ok: false, changed, error: toSforgeError(error).toJSON() };
+        state = { id, ok: false, changed, diagnostics: [], error: toSforgeError(error).toJSON() };
         publish(false);
         return;
       }
@@ -109,10 +114,21 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
       }, RETIRE_AFTER_MS);
       timer.unref();
       retiring.add(timer);
-      state = { id, ok: result.ok, changed, result };
+      let diagnostics = result.diagnostics;
+      if (options.check !== false) {
+        // Static rules only: the browser-based ones are too slow for every keystroke.
+        const checked = await checkBuild({
+          rootDir,
+          config: loaded.config,
+          build: result,
+          headless: false,
+        });
+        diagnostics = finalizeDiagnostics(checked.findings, loaded.config.check.ignore);
+      }
+      state = { id, ok: result.ok, changed, result, diagnostics };
     } catch (error) {
       rmSync(outDir, { recursive: true, force: true });
-      state = { id, ok: false, changed, error: toSforgeError(error).toJSON() };
+      state = { id, ok: false, changed, diagnostics: [], error: toSforgeError(error).toJSON() };
     }
     publish(changed.length > 0 && changed.every((path) => path.endsWith('.css')));
   };
@@ -208,7 +224,7 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
   };
 }
 
-/** Diagnostics worth printing for a build, errors first. */
+/** Diagnostics worth printing for a build: errors and warnings. */
 export function problemsOf(state: DevBuildState): Diagnostic[] {
-  return state.result?.diagnostics.filter((d) => d.severity !== 'info') ?? [];
+  return state.diagnostics.filter((d) => d.severity !== 'info');
 }

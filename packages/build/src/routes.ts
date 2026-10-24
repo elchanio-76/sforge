@@ -101,6 +101,9 @@ export function createRefResolver(options: {
 
     const pageUrl = pageUrls.get(projectPath);
     if (pageUrl !== undefined) return pageUrl + suffix;
+    // A root-relative /x.html that is not a page may be a file from static/;
+    // `sforge check` verifies it against the built site.
+    if (path.startsWith('/') && !/\.(?:md|markdown)$/i.test(path)) return undefined;
 
     if (projectPath.startsWith(contentPrefix)) {
       if (isPage(projectPath)) {

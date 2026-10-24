@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { ErrorCode, SforgeError } from '@staticforge/core';
-import { type StaticServer, startStaticServer } from './static-server.js';
+import { type StaticServer, startStaticServer } from '@staticforge/server';
 
 export interface PreviewServerOptions {
   /** Absolute path of a built site, usually build.outDir. */

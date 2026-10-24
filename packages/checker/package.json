@@ -1,0 +1,40 @@
+{
+  "name": "@staticforge/checker",
+  "version": "0.0.0",
+  "description": "Accessibility and correctness checks for built sites, with safe autofixes",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": "^22.22.0 || >=24.8.0"
+  },
+  "dependencies": {
+    "@staticforge/build": "workspace:*",
+    "@staticforge/content": "workspace:*",
+    "@staticforge/core": "workspace:*",
+    "@staticforge/server": "workspace:*",
+    "axe-core": "^4.14.0",
+    "diff": "^9.0.0",
+    "hast-util-from-html": "^2.0.3",
+    "hast-util-to-string": "^3.0.1",
+    "html-validate": "^11.17.0",
+    "playwright-core": "^1.64.1",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/hast": "^3.0.5",
+    "@types/mdast": "^4.0.4"
+  }
+}

@@ -77,7 +77,12 @@ describe('startDevServer', () => {
       `${server.url}/__sforge/events`,
       (e) => e.length === 1,
     )) as LiveState[];
-    expect(initial?.diagnostics.map((d) => d.ruleId)).toEqual(['img-alt']);
+    // img-alt comes from the build, link-broken (x.png is missing) from the checker.
+    expect(initial?.diagnostics.map((d) => d.ruleId)).toEqual(['img-alt', 'link-broken']);
+    expect(initial?.diagnostics[1]).toMatchObject({
+      url: '/',
+      selector: expect.stringContaining('img'),
+    });
     expect(initial?.pages).toContainEqual({ url: '/', source: 'content/index.md' });
 
     const next = server.nextBuild();

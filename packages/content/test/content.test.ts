@@ -136,6 +136,19 @@ describe('parseContent: markdown', () => {
     expect(page.html).toContain('data-footnotes');
   });
 
+  it('labels task list checkboxes with their item text', async () => {
+    const tight = await md('- [x] Write docs\n  - nested\n- [ ] Ship\n');
+    expect(tight.html).toContain(
+      '<label><input type="checkbox" checked disabled> Write docs</label>\n<ul>',
+    );
+    expect(tight.html).toContain('<label><input type="checkbox" disabled> Ship</label>');
+
+    const loose = await md('- [x] First\n\n- [ ] Second\n');
+    expect(loose.html).toContain(
+      '<p><label><input type="checkbox" checked disabled> First</label></p>',
+    );
+  });
+
   it('highlights code with dual light/dark themes and keeps blocks focusable', async () => {
     const page = await md('```js\nconst a = 1;\n```\n');
     expect(page.html).toContain('class="shiki shiki-themes github-light github-dark"');

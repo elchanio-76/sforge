@@ -16,12 +16,13 @@
     "client"
   ],
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.22.0 || >=24.8.0"
   },
   "dependencies": {
     "@staticforge/build": "workspace:*",
+    "@staticforge/checker": "workspace:*",
     "@staticforge/core": "workspace:*",
-    "chokidar": "^5.0.0",
-    "mime": "^4.1.1"
+    "@staticforge/server": "workspace:*",
+    "chokidar": "^5.0.0"
   }
 }

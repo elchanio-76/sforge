@@ -19,10 +19,11 @@
     "schema"
   ],
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.22.0 || >=24.8.0"
   },
   "dependencies": {
     "@staticforge/build": "workspace:*",
+    "@staticforge/checker": "workspace:*",
     "@staticforge/core": "workspace:*",
     "@staticforge/dev-server": "workspace:*",
     "commander": "^15.0.0"

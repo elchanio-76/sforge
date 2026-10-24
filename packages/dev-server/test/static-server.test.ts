@@ -1,12 +1,8 @@
 import { symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  type StaticServer,
-  injectClient,
-  startPreviewServer,
-  startStaticServer,
-} from '../src/index.js';
+import { type StaticServer, startStaticServer } from '@staticforge/server';
+import { injectClient, startPreviewServer } from '../src/index.js';
 import { tempDir } from './helpers.js';
 
 describe('startStaticServer', () => {

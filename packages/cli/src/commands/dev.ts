@@ -13,11 +13,13 @@ function logBuild(state: DevBuildState, logger: Logger): void {
     if (state.error.hint !== undefined) logger.info(`hint: ${state.error.hint}`);
     return;
   }
-  for (const d of problemsOf(state)) {
+  const problems = problemsOf(state);
+  for (const d of problems) {
     if (d.severity === 'error') logger.error(formatDiagnostic(d));
     else logger.warn(formatDiagnostic(d));
   }
-  const { error = 0, warning = 0 } = state.result?.summary ?? {};
+  const error = problems.filter((d) => d.severity === 'error').length;
+  const warning = problems.length - error;
   const trigger =
     state.changed.length > 0
       ? ` (${state.changed.slice(0, 3).join(', ')}${state.changed.length > 3 ? ', …' : ''})`
@@ -68,7 +70,7 @@ export function registerDevCommand(program: Command, runtime: Runtime): void {
             ok: first.ok,
             summary: first.result?.summary,
             pages: first.result?.pages,
-            diagnostics: first.result?.diagnostics,
+            diagnostics: first.diagnostics,
             error: first.error,
           },
         },

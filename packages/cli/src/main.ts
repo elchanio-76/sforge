@@ -2,6 +2,7 @@ import { Command, CommanderError } from 'commander';
 import { ErrorCode, ExitCode } from '@staticforge/core';
 import type { Runtime } from './command.js';
 import { registerBuildCommand } from './commands/build.js';
+import { registerCheckCommand } from './commands/check.js';
 import { registerConfigCommands } from './commands/config.js';
 import { registerDevCommand } from './commands/dev.js';
 import { registerInitCommand } from './commands/init.js';
@@ -39,6 +40,7 @@ export function createProgram(runtime: Runtime): Command {
   registerInitCommand(program, runtime);
   registerNewCommand(program, runtime);
   registerBuildCommand(program, runtime);
+  registerCheckCommand(program, runtime);
   registerDevCommand(program, runtime);
   registerPreviewCommand(program, runtime);
   registerConfigCommands(program, runtime);

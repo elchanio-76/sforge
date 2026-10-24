@@ -23,6 +23,7 @@ import {
 import { transformNewTabLinks } from './transforms/links.js';
 import { transformMedia } from './transforms/media.js';
 import { type ResolveRef, resolveRefs } from './transforms/refs.js';
+import { labelTaskListItems } from './transforms/task-lists.js';
 import { type Report, createReport } from './transforms/report.js';
 
 /**
@@ -190,6 +191,7 @@ export async function parseContent(
     ...(options.fileExists && { fileExists: options.fileExists }),
   });
   transformNewTabLinks(tree);
+  labelTaskListItems(tree);
   tree = await enhanceFragment.run(tree, file);
 
   return {

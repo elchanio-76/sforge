@@ -7,11 +7,11 @@
 - serves a local preview,
 - provisions and deploys to AWS (private S3 + CloudFront) and Azure Static Web Apps.
 
-> **Status:** early development (milestone M2: local preview). See [PLAN.md](PLAN.md) for the design and roadmap.
+> **Status:** early development (milestone M3: checker). See [PLAN.md](PLAN.md) for the design and roadmap.
 
 ## Development
 
-Requires Node.js ≥ 22.12 and pnpm (the version is pinned in `package.json`; run `corepack enable`, or use `npx pnpm@12.15.0`).
+Requires Node.js 22.22+ or 24.8+ and pnpm (the version is pinned in `package.json`; run `corepack enable`, or use `npx pnpm@12.15.0`).
 
 ```sh
 pnpm install
@@ -32,25 +32,29 @@ cd my-site
 sforge new page guides/getting-started
 sforge new post hello-world
 sforge dev              # http://127.0.0.1:4321, rebuilds and reloads on every change
+sforge check            # accessibility and link checks; --fix repairs what it safely can
 sforge build            # → dist/
 sforge preview          # serve dist/ exactly as production will
 ```
 
-See [docs/content.md](docs/content.md) for project layout, URLs, front-matter and links, and
-[docs/themes.md](docs/themes.md) for the theme contract and template context.
+See [docs/content.md](docs/content.md) for project layout, URLs, front-matter and links,
+[docs/themes.md](docs/themes.md) for the theme contract and template context, and
+[docs/checker.md](docs/checker.md) for the checks, fixes and reports.
 [examples/basic-site](examples/basic-site) shows every content type.
 
 ## Packages
 
-| Package                                                | Purpose                                                              |
-| ------------------------------------------------------ | -------------------------------------------------------------------- |
-| [`@staticforge/core`](packages/core)                   | Config schema and loading, diagnostics, error and exit codes, logger |
-| [`@staticforge/content`](packages/content)             | Front-matter, Markdown/HTML parsing, accessibility transforms        |
-| [`@staticforge/render`](packages/render)               | Theme loading and Nunjucks rendering                                 |
-| [`@staticforge/theme-default`](packages/theme-default) | The accessible default theme                                         |
-| [`@staticforge/build`](packages/build)                 | Site build pipeline, `init` and `new` scaffolding                    |
-| [`@staticforge/dev-server`](packages/dev-server)       | `dev` (watch, live reload, problems overlay) and `preview` servers   |
-| [`staticforge`](packages/cli)                          | The `sforge` command-line interface                                  |
+| Package                                                | Purpose                                                               |
+| ------------------------------------------------------ | --------------------------------------------------------------------- |
+| [`@staticforge/core`](packages/core)                   | Config schema and loading, diagnostics, error and exit codes, logger  |
+| [`@staticforge/content`](packages/content)             | Front-matter, Markdown/HTML parsing, accessibility transforms         |
+| [`@staticforge/render`](packages/render)               | Theme loading and Nunjucks rendering                                  |
+| [`@staticforge/theme-default`](packages/theme-default) | The accessible default theme                                          |
+| [`@staticforge/build`](packages/build)                 | Site build pipeline, `init` and `new` scaffolding                     |
+| [`@staticforge/server`](packages/server)               | Static file server with the production URL semantics                  |
+| [`@staticforge/checker`](packages/checker)             | `check`: source, output and headless (axe-core) rules, fixes, reports |
+| [`@staticforge/dev-server`](packages/dev-server)       | `dev` (watch, live reload, problems overlay) and `preview` servers    |
+| [`staticforge`](packages/cli)                          | The `sforge` command-line interface                                   |
 
 ## CLI contract (for scripts and agents)
 
@@ -68,9 +72,11 @@ sforge new page|post <path> # create content with front-matter
 sforge build               # build into dist/ (--drafts, --out, --base-url)
 sforge dev                 # build, serve and live-reload (--port, --host, --open, --drafts)
 sforge preview             # serve an existing build (--port, --host, --open, --dir)
+sforge check               # check the site (--fix, --dry-run, --no-headless, --pages, --format, --output)
 sforge config validate     # validate staticforge.config.{ts,js,json,yaml}
 sforge config show         # print the resolved config with defaults
 sforge schema config       # JSON Schema of the config file
+sforge schema diagnostics  # JSON Schema of the check report and its diagnostics
 sforge schema output       # JSON Schema of the --json envelope
 sforge version
 ```
@@ -79,8 +85,10 @@ sforge version
 server is ready, then keep running until SIGINT/SIGTERM, exiting with code 0. `--port 0` picks a free port.
 Both listen on 127.0.0.1 unless `--host` is given.
 
-`sforge build --json` reports every page and a list of diagnostics
-(`{ ruleId, severity, message, file, line, column, wcag?, hint? }`) and exits with code 1 if any are errors.
+`sforge build --json` and `sforge check --json` report diagnostics
+(`{ ruleId, severity, message, file?, line?, column?, url?, selector?, wcag?, fixable?, hint?, helpUrl? }`)
+and exit with code 1 if any are errors (for `check`: at or above `check.failOn`).
+The rendered checks need Chromium; see [docs/checker.md](docs/checker.md#chromium).
 
 ## Configuration
 

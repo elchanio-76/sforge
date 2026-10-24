@@ -15,7 +15,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.22.0 || >=24.8.0"
   },
   "dependencies": {
     "@staticforge/content": "workspace:*",

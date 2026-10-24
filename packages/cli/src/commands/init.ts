@@ -46,6 +46,8 @@ export function registerInitCommand(program: Command, runtime: Runtime): void {
           '',
           'Next steps:',
           ...(where === '.' ? [] : [`  cd ${where}`]),
+          '  sforge dev      # preview at http://127.0.0.1:4321 with live reload',
+          '  sforge check    # accessibility and link checks',
           '  sforge build',
         ];
         if (options.baseUrl === 'https://example.com') {

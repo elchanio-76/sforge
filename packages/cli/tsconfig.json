@@ -14,6 +14,9 @@
       "path": "../build"
     },
     {
+      "path": "../checker"
+    },
+    {
       "path": "../dev-server"
     }
   ]

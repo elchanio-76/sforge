@@ -18,10 +18,13 @@ function pageProblems(state) {
     const url = decodeURI(p.url);
     return url === path || url === `${path}/`;
   });
+  // Checker findings name their page; build diagnostics only their source file.
   return state.diagnostics.filter(
     (d) =>
       d.severity !== 'info' &&
-      (d.file === undefined || (page !== undefined && d.file === page.source)),
+      (d.url !== undefined
+        ? page !== undefined && d.url === page.url
+        : d.file === undefined || (page !== undefined && d.file === page.source)),
   );
 }
 
