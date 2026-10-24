@@ -23,18 +23,45 @@ interface RunOptions {
   variables?: NodeJS.ProcessEnv;
 }
 
-async function sforge(args: string[], { cwd, variables = {} }: RunOptions = {}) {
+/** Start the CLI without awaiting it; `shutdown()` simulates Ctrl+C. */
+function startSforge(args: string[], { cwd, variables = {} }: RunOptions = {}) {
   const stdout = sink();
   const stderr = sink();
+  const handlers: (() => void)[] = [];
   const io: Io = {
     stdout: stdout.stream,
     stderr: stderr.stream,
     stdinIsTTY: false,
     env: variables,
     cwd: cwd ?? mkdtempSync(join(tmpdir(), 'sforge-cli-')),
+    onShutdown(handler) {
+      handlers.push(handler);
+      return () => handlers.splice(handlers.indexOf(handler), 1);
+    },
   };
-  const exitCode = await run(['node', 'sforge', ...args], io);
-  return { exitCode, stdout: stdout.text(), stderr: stderr.text() };
+  const exit = run(['node', 'sforge', ...args], io);
+  return {
+    exit,
+    stdout: stdout.text,
+    stderr: stderr.text,
+    shutdown: () => handlers.splice(0).forEach((h) => h()),
+  };
+}
+
+async function sforge(args: string[], options: RunOptions = {}) {
+  const started = startSforge(args, options);
+  const exitCode = await started.exit;
+  return { exitCode, stdout: started.stdout(), stderr: started.stderr() };
+}
+
+/** Wait until the command has written its JSON envelope (servers write it when ready). */
+async function envelopeOf(started: ReturnType<typeof startSforge>) {
+  for (let i = 0; i < 200; i++) {
+    const text = started.stdout();
+    if (text.trim().endsWith('}')) return JSON.parse(text);
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error(`No envelope; stderr: ${started.stderr()}`);
 }
 
 function projectWith(config: unknown): string {
@@ -182,6 +209,53 @@ describe('sforge CLI', () => {
     expect(json.exitCode).toBe(1);
     expect(JSON.parse(json.stdout)).toMatchObject({ ok: false, data: { summary: { error: 1 } } });
     expect(json.stderr).toBe('');
+  });
+
+  it('runs the dev server until shutdown, reporting where it listens', async () => {
+    const dir = projectWith(validConfig);
+    mkdirSync(join(dir, 'content'));
+    writeFileSync(join(dir, 'content/index.md'), '# Live\n');
+
+    const dev = startSforge(['dev', '--port', '0', '--json'], { cwd: dir });
+    const envelope = await envelopeOf(dev);
+    expect(envelope).toMatchObject({
+      command: 'dev',
+      ok: true,
+      data: { host: '127.0.0.1', rootDir: dir, build: { ok: true } },
+    });
+    expect(await (await fetch(`${envelope.data.url}/`)).text()).toContain('<h1>Live</h1>');
+
+    dev.shutdown();
+    expect(await dev.exit).toBe(0);
+    await expect(fetch(`${envelope.data.url}/`)).rejects.toThrow();
+  });
+
+  it('previews an existing build, and explains when there is none', async () => {
+    const dir = projectWith(validConfig);
+    const missing = await sforge(['preview', '--json'], { cwd: dir });
+    expect(missing.exitCode).toBe(2);
+    expect(JSON.parse(missing.stdout).error.code).toBe('SF_NOT_BUILT');
+
+    mkdirSync(join(dir, 'content'));
+    writeFileSync(join(dir, 'content/about.md'), '# About\n');
+    expect((await sforge(['build'], { cwd: dir })).exitCode).toBe(0);
+
+    const preview = startSforge(['preview', '--port', '0', '--json'], { cwd: dir });
+    const { data } = await envelopeOf(preview);
+    expect(data.dir).toBe(join(dir, 'dist'));
+    const about = await fetch(`${data.url}/about`, { redirect: 'manual' });
+    expect(about.status).toBe(301);
+    const missingPage = await fetch(`${data.url}/nope/`);
+    expect(missingPage.status).toBe(404);
+    expect(await missingPage.text()).toContain('Page not found');
+    preview.shutdown();
+    expect(await preview.exit).toBe(0);
+  });
+
+  it('rejects invalid ports as usage errors', async () => {
+    const result = await sforge(['preview', '--port', 'abc']);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain('must be an integer from 0 to 65535');
   });
 
   it('keeps the committed config schema in sync', async () => {

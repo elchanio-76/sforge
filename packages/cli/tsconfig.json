@@ -12,6 +12,9 @@
     },
     {
       "path": "../build"
+    },
+    {
+      "path": "../dev-server"
     }
   ]
 }

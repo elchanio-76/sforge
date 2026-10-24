@@ -7,7 +7,7 @@
 - serves a local preview,
 - provisions and deploys to AWS (private S3 + CloudFront) and Azure Static Web Apps.
 
-> **Status:** early development (milestone M1: building sites). See [PLAN.md](PLAN.md) for the design and roadmap.
+> **Status:** early development (milestone M2: local preview). See [PLAN.md](PLAN.md) for the design and roadmap.
 
 ## Development
 
@@ -31,7 +31,9 @@ sforge init my-site --title "My Site" --base-url https://www.example.com
 cd my-site
 sforge new page guides/getting-started
 sforge new post hello-world
+sforge dev              # http://127.0.0.1:4321, rebuilds and reloads on every change
 sforge build            # → dist/
+sforge preview          # serve dist/ exactly as production will
 ```
 
 See [docs/content.md](docs/content.md) for project layout, URLs, front-matter and links, and
@@ -47,6 +49,7 @@ See [docs/content.md](docs/content.md) for project layout, URLs, front-matter an
 | [`@staticforge/render`](packages/render)               | Theme loading and Nunjucks rendering                                 |
 | [`@staticforge/theme-default`](packages/theme-default) | The accessible default theme                                         |
 | [`@staticforge/build`](packages/build)                 | Site build pipeline, `init` and `new` scaffolding                    |
+| [`@staticforge/dev-server`](packages/dev-server)       | `dev` (watch, live reload, problems overlay) and `preview` servers   |
 | [`staticforge`](packages/cli)                          | The `sforge` command-line interface                                  |
 
 ## CLI contract (for scripts and agents)
@@ -63,12 +66,18 @@ See [docs/content.md](docs/content.md) for project layout, URLs, front-matter an
 sforge init [dir]          # scaffold a project (--format ts|json|yaml, --provider aws|azure)
 sforge new page|post <path> # create content with front-matter
 sforge build               # build into dist/ (--drafts, --out, --base-url)
+sforge dev                 # build, serve and live-reload (--port, --host, --open, --drafts)
+sforge preview             # serve an existing build (--port, --host, --open, --dir)
 sforge config validate     # validate staticforge.config.{ts,js,json,yaml}
 sforge config show         # print the resolved config with defaults
 sforge schema config       # JSON Schema of the config file
 sforge schema output       # JSON Schema of the --json envelope
 sforge version
 ```
+
+`sforge dev --json` and `sforge preview --json` write their envelope (with the `url`) as soon as the
+server is ready, then keep running until SIGINT/SIGTERM, exiting with code 0. `--port 0` picks a free port.
+Both listen on 127.0.0.1 unless `--host` is given.
 
 `sforge build --json` reports every page and a list of diagnostics
 (`{ ruleId, severity, message, file, line, column, wcag?, hint? }`) and exits with code 1 if any are errors.

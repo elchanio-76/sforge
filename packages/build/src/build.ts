@@ -27,7 +27,13 @@ import {
 } from '@staticforge/render';
 import { loadData } from './data.js';
 import { navEntries, navFor } from './nav.js';
-import { PAGE_EXTENSIONS, ProjectDirs, listFiles, resolveOutDir } from './project.js';
+import {
+  PAGE_EXTENSIONS,
+  ProjectDirs,
+  listFiles,
+  resolveOutDir,
+  resolveScratchDir,
+} from './project.js';
 import { type Route, createRefResolver, routeFor } from './routes.js';
 
 export interface BuildOptions {
@@ -37,6 +43,11 @@ export interface BuildOptions {
   drafts?: boolean;
   /** Output directory (overrides build.outDir), relative to rootDir. */
   outDir?: string;
+  /**
+   * Build into this directory instead, which must be inside the OS temp
+   * directory. Used by `sforge dev` so previews never touch build.outDir.
+   */
+  scratchDir?: string;
   /** Site URL for canonical links (overrides site.baseUrl), e.g. for previews. */
   baseUrl?: string;
   /** Value of `<meta name="generator">`. */
@@ -90,7 +101,10 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   const logger = options.logger;
   const baseUrl = options.baseUrl ?? config.site.baseUrl;
   const includeDrafts = options.drafts ?? config.build.drafts;
-  const outDir = resolveOutDir(rootDir, options.outDir ?? config.build.outDir);
+  const outDir =
+    options.scratchDir !== undefined
+      ? resolveScratchDir(options.scratchDir)
+      : resolveOutDir(rootDir, options.outDir ?? config.build.outDir);
   const diagnostics: Diagnostic[] = [];
 
   const theme = loadTheme(config.theme, rootDir);

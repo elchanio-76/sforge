@@ -27,7 +27,7 @@ Decisions made: TypeScript/Node; provision + deploy with **HCL modules run by Op
 | Templates | Nunjucks (layouts, partials, filters) |
 | Assets | `sharp` (images → AVIF/WebP + srcset), `esbuild` (JS bundle/minify), `lightningcss` (CSS minify/autoprefix), content-hash fingerprinting |
 | Search | Pagefind (post-build index, runs fully client side) |
-| Dev server | `vite`-less custom server: `h3`/`node:http` + `chokidar` watcher + WebSocket live reload; incremental rebuild |
+| Dev server | `node:http` static server + `chokidar` 5 watcher + Server-Sent Events live reload (no WebSocket dependency); full rebuild into a temp dir per change (incremental rebuilds deferred to M8) |
 | Checker | `html-validate` (static, well-formedness, a11y rules), `axe-core` via **Playwright** headless Chromium (rendered WCAG 2.2 AA), custom rules (links, landmarks, heading order, alt, media captions), `linkinator`-style internal link check |
 | Provisioning (IaC) | **HCL modules** shipped in the package, run by **OpenTofu** (default; pinned version, downloaded and SHA256-verified into `~/.cache/staticforge/bin`) or **Terraform** from PATH (`iac.engine`). Driven by spawning the CLI with `-json` output, which is parsed into progress events and outputs |
 | AWS runtime | AWS SDK v3 (`client-s3`, `client-cloudfront`, `client-cloudfront-keyvaluestore`, `client-sts`) for deploy, rollback and previews |
@@ -48,7 +48,7 @@ packages/
   assets/          # image/js/css processing, fingerprinting, manifest
   site-features/   # nav, sitemap/robots, collections, tags, pagination, RSS/Atom, Pagefind
   checker/         # rule engine, static + headless checks, autofixers, reporters
-  dev-server/      # preview server, watcher, live reload
+  dev-server/      # production-equivalent static server, watcher, SSE live reload, problems overlay
   providers/
     provider-api/  # Provider interface + shared deploy logic (diffing, manifest)
     iac/           # engine resolver/downloader, workspace generator, tofu/terraform runner, state bootstrap
@@ -135,11 +135,13 @@ Layers:
 Reporters: `pretty` (TTY), `json` (stable schema), `sarif` (GitHub code scanning annotations), `junit`.
 Exit codes: `0` clean, `1` errors at or above `failOn`, `2` usage/config error, `3` internal error.
 
-## 7. Dev server — `sforge dev [--port 4321] [--open] [--host]`
-- Builds to an in-memory/temp out dir, serves with the **same URL semantics as production** (clean URLs, `index.html` resolution, `404.html`, headers from config), so preview is the same as prod.
-- chokidar watch → incremental rebuild → WebSocket reload (CSS hot-swap without full reload).
-- An overlay injected only in dev shows checker diagnostics for the current page (static rules on each rebuild).
-- `sforge preview` serves an existing `dist/` without watching (used by headless checks and e2e).
+## 7. Dev server — `sforge dev [--port 4321] [--open] [--host [addr]] [--drafts]` ✅ (M2)
+- Each build goes into a fresh directory under the OS temp dir (never `build.outDir`); the server switches to it atomically and deletes the previous one after a grace period. A failed build (e.g. invalid config) keeps serving the last good one.
+- **URL semantics match production** via one pure function, `resolveRequest` (`packages/dev-server/src/resolve.ts`): `/x/` → `x/index.html`; `/x` → 301 `/x/` (or `x.html` with `trailingSlash: never`); unknown → `404.html` with status 404; dot-paths (`.sforge/`) and symlinks escaping the root are never served. The M5 CloudFront function must pass the same table of tests. Byte ranges are supported for video.
+- chokidar watches the project (ignoring `build.outDir`, dot-dirs, `node_modules`); changes are debounced (≥ 60ms, longer than chokidar's 50ms per-file throttle, so a quick second save is never lost); config changes reload the config.
+- Live reload over SSE (`/__sforge/events`): the client (`packages/dev-server/client/live-client.js`) reloads, or hot-swaps stylesheets when only CSS changed, and shows an accessible overlay of the current page's errors/warnings (build diagnostics now; checker results once M3 lands).
+- `sforge preview [--port 4322] [--dir]` serves an existing build with the same semantics, without the client (used by headless checks in M3).
+- Both listen on 127.0.0.1 by default; `--host` without a value binds 0.0.0.0 with a warning. Under `--json` they write the envelope when ready, then run until SIGINT/SIGTERM (exit 0).
 
 ## 8a. IaC layer (`providers/iac`)
 - **Split of responsibilities**: OpenTofu/Terraform owns *infrastructure* (buckets, distribution, functions, certs, DNS, SWA resource, CI identities). The TypeScript SDK deployers own *runtime operations* (content upload, KeyValueStore version switch, rollback, PR previews), because those change on every deploy and would churn state.
@@ -209,8 +211,8 @@ Shared behavior: manifest diffing, cache-header classes (hashed assets → `publ
 sforge init [dir] [--theme default] [--provider aws|azure] [--yes]   # scaffold project
 sforge new page|post <path> [--title]                                 # create content with front-matter
 sforge build [--drafts] [--out dist] [--base-url] [--json]
-sforge dev [--port] [--open] [--host]
-sforge preview [--port]                                               # serve dist/
+sforge dev [--port] [--open] [--host [addr]] [--drafts]
+sforge preview [--port] [--open] [--host [addr]] [--dir]               # serve dist/
 sforge check [--fix] [--dry-run] [--headless|--no-headless] [--pages glob] [--format pretty|json|sarif|junit]
 sforge provision <target> [--diff] [--bootstrap-state] [--local-state] [--no-wait] [--yes]
 sforge iac path|init|plan|apply|output <target>                      # low-level access to the generated tofu/terraform workspace
@@ -248,7 +250,7 @@ Generates `.github/workflows/`:
 0. **Step 0** ✅: this plan is kept in `PLAN.md` as the project's living design document. Update it when decisions change.
 1. **M0 Scaffold** ✅: monorepo, tooling, CI for the repo itself, `core` config + logger + error codes, `cli` skeleton with `--json`/exit codes, `config validate|show`, `schema config|output`, `version`.
 2. **M1 Build** ✅: markdown pipeline, HTML detection/wrapping, link resolution, Nunjucks render, default theme (+ `templates/` overrides, `data/`), static/assets copy, build manifest, basic top-level nav, `sforge build`, `init` (non-interactive; `--format ts|json|yaml`), `new page|post`, `examples/basic-site`, docs/content.md + docs/themes.md.
-3. **M2 Preview**: `dev` (watch + live reload) and `preview`.
+3. **M2 Preview** ✅: `dev` (watch + SSE live reload + CSS hot-swap + problems overlay) and `preview`, production-equivalent request resolution, per-run isolated test temp dirs.
 4. **M3 Checker**: rule engine, static rules, html-validate integration, reporters, autofix with source mapping. Then headless axe/Playwright.
 5. **M4 Site features + assets**: nav/breadcrumbs, sitemap/robots/404, collections/tags/pagination/RSS/Atom, sharp images, esbuild/lightningcss, fingerprinting, Pagefind.
 6. **M5a IaC layer**: engine resolver/downloader (tofu default, terraform optional), workspace generator, runner with `-json` parsing, state bootstrap modules (S3 native lock / Azure blob), `provision --diff`, `status` drift, `iac` passthrough.

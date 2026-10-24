@@ -8,7 +8,11 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // Client-side scripts shipped with sites and themes run in the browser.
-    files: ['examples/**/assets/**/*.js', 'packages/theme-*/assets/**/*.js'],
+    files: [
+      'examples/**/assets/**/*.js',
+      'packages/theme-*/assets/**/*.js',
+      'packages/dev-server/client/**/*.js',
+    ],
     languageOptions: { globals: globals.browser },
   },
   {

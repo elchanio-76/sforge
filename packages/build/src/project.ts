@@ -1,4 +1,5 @@
 import { readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ErrorCode, SforgeError } from '@staticforge/core';
 
@@ -43,6 +44,23 @@ export function resolveOutDir(rootDir: string, outDir: string): string {
     top.startsWith('.')
   ) {
     throw unsafe(`it would overwrite the project's ${top}/ directory`);
+  }
+  return absolute;
+}
+
+/**
+ * Validate a scratch output directory (used by `sforge dev`): it must be a
+ * subdirectory of the OS temp directory, so a rebuild can never delete
+ * project files.
+ */
+export function resolveScratchDir(dir: string): string {
+  const absolute = resolve(dir);
+  const rel = relative(tmpdir(), absolute);
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+    throw new SforgeError(
+      ErrorCode.UnsafePath,
+      `Scratch output directory ${absolute} is not inside ${tmpdir()}`,
+    );
   }
   return absolute;
 }

@@ -1,10 +1,23 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/core" },
-    { "path": "packages/content" },
-    { "path": "packages/render" },
-    { "path": "packages/build" },
-    { "path": "packages/cli" }
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/content"
+    },
+    {
+      "path": "packages/render"
+    },
+    {
+      "path": "packages/build"
+    },
+    {
+      "path": "packages/dev-server"
+    },
+    {
+      "path": "packages/cli"
+    }
   ]
 }

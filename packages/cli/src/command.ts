@@ -16,6 +16,11 @@ export interface CommandResult<T> {
   ok?: boolean;
   /** Human-readable rendering written to stdout when not in --json mode. */
   text?: string;
+  /**
+   * For long-running commands (servers): the result is written as soon as the
+   * command is ready, then the process stays up until this settles.
+   */
+  wait?: Promise<void>;
 }
 
 export interface ActionInput {
@@ -62,6 +67,7 @@ export function action<T>(runtime: Runtime, handler: Handler<T>) {
         runtime.io.stdout.write(result.text.endsWith('\n') ? result.text : `${result.text}\n`);
       }
       runtime.exitCode = ok ? ExitCode.Ok : ExitCode.Failure;
+      await result.wait;
     } catch (thrown) {
       const error = toSforgeError(thrown);
       if (ctx.json) {

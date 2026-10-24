@@ -24,6 +24,7 @@
   "dependencies": {
     "@staticforge/build": "workspace:*",
     "@staticforge/core": "workspace:*",
+    "@staticforge/dev-server": "workspace:*",
     "commander": "^15.0.0"
   }
 }

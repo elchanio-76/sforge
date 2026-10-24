@@ -1,0 +1,27 @@
+{
+  "name": "@staticforge/dev-server",
+  "version": "0.0.0",
+  "description": "Local preview and live-reloading development server for staticforge",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "client"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@staticforge/build": "workspace:*",
+    "@staticforge/core": "workspace:*",
+    "chokidar": "^5.0.0",
+    "mime": "^4.1.1"
+  }
+}

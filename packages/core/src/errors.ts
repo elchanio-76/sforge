@@ -29,6 +29,8 @@ export const ErrorCode = {
   ThemeInvalid: 'SF_THEME_INVALID',
   FileExists: 'SF_FILE_EXISTS',
   UnsafePath: 'SF_UNSAFE_PATH',
+  NotBuilt: 'SF_NOT_BUILT',
+  PortInUse: 'SF_PORT_IN_USE',
   Internal: 'SF_INTERNAL',
 } as const;
 
@@ -44,6 +46,8 @@ const exitCodeFor: Record<ErrorCode, ExitCode> = {
   SF_THEME_INVALID: ExitCode.Usage,
   SF_FILE_EXISTS: ExitCode.Usage,
   SF_UNSAFE_PATH: ExitCode.Usage,
+  SF_NOT_BUILT: ExitCode.Usage,
+  SF_PORT_IN_USE: ExitCode.Usage,
   SF_INTERNAL: ExitCode.Internal,
 };
 
