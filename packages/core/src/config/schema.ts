@@ -124,6 +124,15 @@ export const configSchema = z
           .default(['avif', 'webp']),
         widths: z.array(z.int().min(16).max(8192)).min(1).default([480, 960, 1600]),
         quality: z.int().min(1).max(100).default(75),
+        optimize: z
+          .boolean()
+          .default(true)
+          .describe('Resize content images into responsive AVIF/WebP variants.'),
+        sizes: z
+          .string()
+          .min(1)
+          .default('(min-width: 45rem) 45rem, 100vw')
+          .describe('The `sizes` attribute of responsive images: their width in the layout.'),
       })
       .prefault({}),
     styles: z

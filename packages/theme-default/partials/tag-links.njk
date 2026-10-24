@@ -1,0 +1,6 @@
+{# Lists `tagLinks` (TagRef[]), linking each tag to its page when the site has tag pages. #}
+<ul class="tags" data-testid="tags">
+  {% for tag in tagLinks %}
+  <li>{% if tag.url %}<a href="{{ tag.url }}">{{ tag.name }}</a>{% else %}{{ tag.name }}{% endif %}</li>
+  {% endfor %}
+</ul>

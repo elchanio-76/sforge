@@ -11,6 +11,9 @@
       "path": "packages/render"
     },
     {
+      "path": "packages/assets"
+    },
+    {
       "path": "packages/build"
     },
     {

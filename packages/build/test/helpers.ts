@@ -17,3 +17,9 @@ export function config(overrides: Partial<SforgeConfigInput> = {}) {
 }
 
 export const read = (root: string, path: string): string => readFileSync(join(root, path), 'utf8');
+
+/** A valid 64×48 PNG, small enough to inline. */
+export const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAEAAAAAwCAMAAACWlYwtAAAAA1BMVEU6bqXTREzSAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAGklEQVRIx+3BgQAAAADDoPlTX+AIVQEAAHwDDDAAAcvAQmMAAAAASUVORK5CYII=',
+  'base64',
+);

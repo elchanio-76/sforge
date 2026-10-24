@@ -9,5 +9,9 @@ export default defineConfig({
     author: 'The staticforge authors',
   },
   styles: ['/assets/css/site.css'],
+  collections: {
+    // Two posts per page, so the example shows pagination.
+    blog: { dir: 'content/blog', perPage: 2 },
+  },
   scripts: ['/assets/js/site.js'],
 });

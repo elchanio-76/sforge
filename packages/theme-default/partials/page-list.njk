@@ -1,0 +1,18 @@
+{# Lists `items` (PageSummary[]): collection pages and tag pages. #}
+{% if items.length %}
+<ol class="page-list" data-testid="page-list">
+  {% for item in items %}
+  <li>
+    <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
+    {% if item.date %}
+    <p class="post-meta"><time datetime="{{ item.date | isoDate }}">{{ item.date | readableDate(page.lang) }}</time></p>
+    {% endif %}
+    {% if item.description %}
+    <p>{{ item.description }}</p>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<p>There is nothing here yet.</p>
+{% endif %}

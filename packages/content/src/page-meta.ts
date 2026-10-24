@@ -24,6 +24,8 @@ export const pageMetaSchema = z.looseObject({
     .string()
     .regex(/^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/, 'must be a BCP 47 language tag')
     .optional(),
+  order: z.number().optional().describe('Position in collections sorted by "order" (ascending).'),
+  sitemap: z.boolean().default(true).describe('List the page in sitemap.xml.'),
   nav: z
     .strictObject({
       order: z.number().optional(),

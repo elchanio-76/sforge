@@ -2,12 +2,13 @@
 
 `sforge` is a command-line static site generator that scripts and AI agents can drive. It:
 
-- builds accessible, well-formed HTML from Markdown or HTML content and a theme,
+- builds accessible, well-formed HTML from Markdown or HTML content and a theme, with
+  collections, tags, RSS/Atom feeds, a sitemap, responsive images and client-side search,
 - checks the output against WCAG 2.2 AA, with optional autofix,
 - serves a local preview,
 - provisions and deploys to AWS (private S3 + CloudFront) and Azure Static Web Apps.
 
-> **Status:** early development (milestone M3: checker). See [PLAN.md](PLAN.md) for the design and roadmap.
+> **Status:** early development (milestone M4: site features and assets). See [PLAN.md](PLAN.md) for the design and roadmap.
 
 ## Development
 
@@ -50,7 +51,8 @@ See [docs/content.md](docs/content.md) for project layout, URLs, front-matter an
 | [`@staticforge/content`](packages/content)             | Front-matter, Markdown/HTML parsing, accessibility transforms         |
 | [`@staticforge/render`](packages/render)               | Theme loading and Nunjucks rendering                                  |
 | [`@staticforge/theme-default`](packages/theme-default) | The accessible default theme                                          |
-| [`@staticforge/build`](packages/build)                 | Site build pipeline, `init` and `new` scaffolding                     |
+| [`@staticforge/assets`](packages/assets)               | Images (sharp), CSS (Lightning CSS), JS (esbuild), search (Pagefind)  |
+| [`@staticforge/build`](packages/build)                 | Build pipeline, collections, tags, feeds, sitemap, `init` and `new`   |
 | [`@staticforge/server`](packages/server)               | Static file server with the production URL semantics                  |
 | [`@staticforge/checker`](packages/checker)             | `check`: source, output and headless (axe-core) rules, fixes, reports |
 | [`@staticforge/dev-server`](packages/dev-server)       | `dev` (watch, live reload, problems overlay) and `preview` servers    |

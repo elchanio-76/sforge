@@ -1,2 +1,7 @@
 packages:
   - packages/*
+
+# esbuild's postinstall only verifies its platform binary, which pnpm installs as an
+# optional dependency anyway.
+allowBuilds:
+  esbuild: false

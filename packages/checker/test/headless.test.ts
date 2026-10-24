@@ -1,6 +1,11 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
+import { buildSite } from '@staticforge/build';
 import { loadConfig } from '@staticforge/core';
+import { startStaticServer } from '@staticforge/server';
 import { checkSite } from '../src/index.js';
 import { DOCUMENT, config, tempProject } from './helpers.js';
 
@@ -31,7 +36,7 @@ describe.skipIf(!browserAvailable)('rendered checks (axe-core in Chromium)', () 
       requireBrowser: true,
     });
     expect(result.diagnostics).toEqual([]);
-    expect(result).toMatchObject({ ok: true, rendered: 'ran', pages: 8 });
+    expect(result).toMatchObject({ ok: true, rendered: 'ran', pages: 17 });
   });
 
   it('finds contrast problems and says which modes they occur in', async () => {
@@ -90,5 +95,45 @@ describe.skipIf(!browserAvailable)('rendered checks (axe-core in Chromium)', () 
         message: expect.stringContaining('undefinedFunction is not defined'),
       },
     ]);
+  });
+});
+
+describe.skipIf(!browserAvailable)('the default theme in a browser', () => {
+  it('searches the site and announces the results', async () => {
+    const { config: exampleConfig, rootDir } = await loadConfig({
+      cwd: exampleDir,
+      aliases: { staticforge: cliEntry },
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'sforge-search-'));
+    const build = await buildSite({ rootDir, config: exampleConfig, scratchDir: dir });
+    const server = await startStaticServer({
+      root: () => build.outDir,
+      host: '127.0.0.1',
+      port: 0,
+      trailingSlash: 'always',
+    });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.goto(`${server.url}/search/`);
+      await page.getByLabel('Search Basic Site').fill('pagefind');
+      await page.getByRole('button', { name: 'Search' }).press('Enter');
+      await expect
+        .poll(() => page.getByTestId('search-status').textContent())
+        .toBe('1 result for “pagefind”.');
+      const results = page.getByTestId('search-results').getByRole('link');
+      expect(await results.allTextContents()).toEqual(['Search without a server']);
+      expect(page.url()).toBe(`${server.url}/search/?q=pagefind`);
+
+      // The query in the URL is searched on load, so results can be linked to.
+      await page.goto(`${server.url}/search/?q=zyxwvq`);
+      await expect
+        .poll(() => page.getByTestId('search-status').textContent())
+        .toBe('No results for “zyxwvq”.');
+    } finally {
+      await browser.close();
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

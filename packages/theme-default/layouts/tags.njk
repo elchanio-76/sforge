@@ -1,0 +1,13 @@
+{% extends "layouts/base.njk" %}
+{% block main %}
+<article class="page" data-testid="tags-index">
+  <header class="page-header">
+    <h1>{{ page.title }}</h1>
+  </header>
+  <ul class="tags tag-cloud">
+    {% for tag in tags %}
+    <li><a href="{{ tag.url }}">{{ tag.name }}<span class="visually-hidden">,</span> <span class="count">({{ tag.count }})</span></a></li>
+    {% endfor %}
+  </ul>
+</article>
+{% endblock %}

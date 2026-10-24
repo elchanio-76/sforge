@@ -35,6 +35,7 @@ function context(
       date: undefined,
       updated: undefined,
       tags: [],
+      tagLinks: [],
       layout: 'page',
       sourcePath: 'content/about.md',
       headings: [],
@@ -49,6 +50,12 @@ function context(
     theme: { styles: [themeAssetUrl('css/theme.css')], scripts: [] },
     data: {},
     build: { generator: 'staticforge test', time: '2026-10-24T00:00:00.000Z', year: 2026 },
+    collections: {},
+    tags: [],
+    tagsUrl: undefined,
+    breadcrumbs: [],
+    feeds: [],
+    search: undefined,
   };
 }
 
@@ -147,11 +154,16 @@ describe('createRenderer with the default theme', () => {
         layout: 'post',
         date: new Date('2026-03-05'),
         tags: ['news', 'aws'],
+        tagLinks: [
+          { name: 'news', slug: 'news', url: '/tags/news/' },
+          { name: 'aws', slug: 'aws', url: undefined },
+        ],
         lang: 'en-GB',
       }),
     );
     expect(html).toContain('<time datetime="2026-03-05">5 March 2026</time>');
     expect(html).toContain('<meta property="og:type" content="article">');
+    expect(html).toContain('<li><a href="/tags/news/">news</a></li>');
     expect(html).toContain('<li>aws</li>');
   });
 

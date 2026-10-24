@@ -15,7 +15,8 @@ describe('checkSite', () => {
     });
     const result = await checkSite({ rootDir, config: config(), ...STATIC });
     expect(result.diagnostics).toEqual([]);
-    expect(result).toMatchObject({ ok: true, pages: 4, rendered: 'off', failOn: 'error' });
+    // Three content pages, the generated 404 and the search page.
+    expect(result).toMatchObject({ ok: true, pages: 5, rendered: 'off', failOn: 'error' });
   });
 
   it('reports output problems with the page and element they occur on', async () => {

@@ -24,18 +24,35 @@ describe('examples/basic-site', () => {
       '/ page',
       '/404.html 404',
       '/about/ page',
+      '/blog/ list',
       '/blog/hello/ post',
+      '/blog/images/ post',
+      '/blog/page/2/ list',
+      '/blog/search/ post',
       '/contact/ page',
       '/guides/ page',
       '/guides/markdown/ page',
       '/legacy/ document',
+      '/search/ search',
+      '/tags/ tags',
+      '/tags/announcement/ tag',
+      '/tags/images/ tag',
+      '/tags/release/ tag',
     ]);
 
     const guide = read(result.outDir, 'guides/markdown/index.html');
     expect(guide).toContain(
       '<img src="/guides/diagram.svg" alt="A diagram of content flowing from Markdown to HTML"',
     );
-    expect(guide).toContain('<script type="module" src="/assets/js/site.js"></script>');
+    expect(guide).toMatch(
+      /<script type="module" src="\/assets\/js\/site\.[0-9a-f]{8}\.js"><\/script>/,
+    );
+    expect(read(result.outDir, 'blog/images/index.html')).toContain(
+      'width="1600" height="900"></picture>',
+    );
+    for (const file of ['blog/feed.xml', 'blog/atom.xml', 'sitemap.xml', 'pagefind/pagefind.js']) {
+      expect(existsSync(join(result.outDir, file)), file).toBe(true);
+    }
     expect(read(result.outDir, 'index.html')).toContain(
       '<a href="/legacy/">A complete HTML document</a>',
     );

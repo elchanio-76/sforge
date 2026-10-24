@@ -2,8 +2,9 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
-.sforge/state/
-.sforge/iac/**/.terraform/
+**/.sforge/cache/
+**/.sforge/state/
+**/.sforge/iac/**/.terraform/
 *.log
 .DS_Store
 sites/

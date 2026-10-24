@@ -1,0 +1,23 @@
+{% extends "layouts/base.njk" %}
+{% block head %}
+  <script type="module" src="{{ 'js/search.js' | themeAsset }}"></script>
+{% endblock %}
+{% block main %}
+<article class="page search" data-testid="search">
+  <header class="page-header">
+    <h1>{{ page.title }}</h1>
+  </header>
+  <form class="search-form" role="search" action="{{ page.url }}" method="get" data-search-form data-testid="search-form">
+    <label for="search-input">Search {{ site.title }}</label>
+    <div class="search-row">
+      <input id="search-input" type="search" name="q" autocomplete="off" required>
+      <button type="submit">Search</button>
+    </div>
+  </form>
+  <p class="search-status" role="status" data-search-status data-testid="search-status"></p>
+  <ol class="page-list" data-search-results data-testid="search-results"></ol>
+  <noscript>
+    <p>Search needs JavaScript. You can browse the site from the menu instead.</p>
+  </noscript>
+</article>
+{% endblock %}

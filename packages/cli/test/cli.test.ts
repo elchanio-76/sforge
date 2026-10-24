@@ -203,7 +203,7 @@ describe('sforge CLI', () => {
     expect(human.stderr).toContain(
       'error content/index.md:1:1 error img-alt Image has no alt attribute (WCAG 1.1.1)',
     );
-    expect(human.stdout).toMatch(/Built 2 pages .* 1 error, 1 warning/);
+    expect(human.stdout).toMatch(/Built 3 pages .* 1 error, 1 warning/);
 
     const json = await sforge(['build', '--json'], { cwd: dir });
     expect(json.exitCode).toBe(1);
@@ -269,7 +269,7 @@ describe('sforge CLI', () => {
       'content/index.md\n  5:1     warning Heading level skips from h2 to h4',
     );
     expect(human.stdout).toContain('error   Link to /gone/ does not match any page');
-    expect(human.stdout).toMatch(/✖ 1 error, 1 warning, 0 info in 2 pages \(static checks only/);
+    expect(human.stdout).toMatch(/✖ 1 error, 1 warning, 0 info in 3 pages \(static checks only/);
 
     const json = await sforge(['check', '--no-headless', '--json'], { cwd: dir });
     expect(json.exitCode).toBe(1);

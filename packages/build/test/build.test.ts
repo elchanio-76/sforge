@@ -3,14 +3,14 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MANIFEST_PATH, buildSite } from '../src/index.js';
-import { config, read, tempProject } from './helpers.js';
+import { PNG, config, read, tempProject } from './helpers.js';
 
 const site = {
   'content/index.md':
     '---\ntitle: Home\n---\nSee [about](about.md) and [the post](blog/hello.md#intro).\n',
   'content/about.md':
-    '---\ntitle: About us\nnav:\n  order: 1\n---\n# About us\n\n![Team photo](team.jpg)\n',
-  'content/team.jpg': Buffer.from([0xff, 0xd8, 0xff]),
+    '---\ntitle: About us\nnav:\n  order: 1\n---\n# About us\n\n![Team photo](team.png)\n',
+  'content/team.png': PNG,
   'content/blog/hello.md':
     '---\ntitle: Hello\nlayout: post\ndate: 2026-01-02\ntags: [news]\n---\n## Intro\n\n![Demo](demo.mp4)\n',
   'content/blog/demo.mp4': 'video',
@@ -18,7 +18,7 @@ const site = {
   'content/blog/secret.md': '---\ntitle: Secret\ndraft: true\n---\nShh.\n',
   'content/contact.html': '<h1>Contact</h1><p><a href="index.md">Home</a></p>',
   'content/legacy.html':
-    '<!doctype html><html><head><meta charset="utf-8"><title>Legacy</title><link rel="stylesheet" href="legacy.css"></head><body><img src="team.jpg" alt="Team"></body></html>',
+    '<!doctype html><html><head><meta charset="utf-8"><title>Legacy</title><link rel="stylesheet" href="legacy.css"></head><body><img src="team.png" alt="Team"></body></html>',
   'content/legacy.css': 'body{}',
   'assets/css/site.css': ':root{}',
   'static/robots.txt': 'User-agent: *\n',
@@ -36,24 +36,29 @@ describe('buildSite', () => {
     expect(result.diagnostics).toEqual([]);
     expect(result.ok).toBe(true);
     expect(result.pages.map((p) => [p.url, p.layout])).toEqual([
+      ['/', 'page'],
+      ['/404.html', '404'],
       ['/about/', 'page'],
       ['/blog/hello/', 'post'],
       ['/contact/', 'page'],
-      ['/', 'page'],
       ['/legacy/', 'document'],
-      ['/404.html', '404'],
+      ['/search/', 'search'],
+      ['/tags/', 'tags'],
+      ['/tags/news/', 'tag'],
     ]);
     expect(result.drafts.skipped).toEqual(['content/blog/secret.md']);
 
     for (const file of [
       'index.html',
       'about/index.html',
-      'team.jpg',
+      'team.png',
       'blog/demo.mp4',
       'assets/css/site.css',
       'assets/theme/css/theme.css',
       'robots.txt',
+      'sitemap.xml',
       '404.html',
+      'pagefind/pagefind.js',
     ]) {
       expect(existsSync(join(result.outDir, file)), file).toBe(true);
     }
@@ -64,7 +69,14 @@ describe('buildSite', () => {
     expect(manifest.files['robots.txt']).toEqual({
       sha256: createHash('sha256').update('User-agent: *\n').digest('hex'),
       size: 14,
+      cache: 'revalidate',
     });
+    const hashed = Object.entries(manifest.files).filter(
+      ([, entry]) => (entry as { cache: string }).cache === 'immutable',
+    );
+    expect(hashed.map(([file]) => file)).toContainEqual(
+      expect.stringMatching(/^assets\/css\/site\.[0-9a-f]{8}\.css$/),
+    );
   });
 
   it('rewrites source links to page URLs and co-located files to root-relative URLs', async () => {
@@ -74,7 +86,9 @@ describe('buildSite', () => {
     expect(read(outDir, 'index.html')).toContain(
       '<a href="/about/">about</a> and <a href="/blog/hello/#intro">',
     );
-    expect(read(outDir, 'about/index.html')).toContain('src="/team.jpg"');
+    expect(read(outDir, 'about/index.html')).toMatch(
+      /srcset="\/_assets\/img\/team-[0-9a-f]{10}-64\.png 64w"/,
+    );
     expect(read(outDir, 'contact/index.html')).toContain('<a href="/">Home</a>');
   });
 
@@ -98,10 +112,11 @@ describe('buildSite', () => {
     expect(contact.match(/<h1/g)).toHaveLength(1);
 
     const legacy = read(outDir, 'legacy/index.html');
-    expect(legacy).toContain(
-      '<meta charset="utf-8"><link rel="stylesheet" href="/assets/theme/css/theme.css"><link rel="stylesheet" href="/assets/css/site.css"><title>Legacy</title><link rel="stylesheet" href="/legacy.css">',
+    expect(legacy).toMatch(
+      /<meta charset="utf-8"><link rel="stylesheet" href="\/assets\/theme\/css\/theme\.[0-9a-f]{8}\.css"><link rel="stylesheet" href="\/assets\/css\/site\.[0-9a-f]{8}\.css"><title>Legacy<\/title><link rel="stylesheet" href="\/legacy\.css">/,
     );
-    expect(legacy).toContain('<img src="/team.jpg" alt="Team">');
+    // Documents are the author's: their images are not rewritten.
+    expect(legacy).toContain('<img src="/team.png" alt="Team">');
     expect(legacy).not.toContain('skip-link');
   });
 
@@ -181,10 +196,10 @@ describe('buildSite', () => {
   it('replaces the previous output', async () => {
     const root = tempProject(site);
     const first = await buildSite({ rootDir: root, config: config() });
-    expect(existsSync(join(first.outDir, 'robots.txt'))).toBe(true);
-    rmSync(join(root, 'static/robots.txt'));
+    expect(existsSync(join(first.outDir, 'contact/index.html'))).toBe(true);
+    rmSync(join(root, 'content/contact.html'));
     await buildSite({ rootDir: root, config: config() });
-    expect(existsSync(join(first.outDir, 'robots.txt'))).toBe(false);
+    expect(existsSync(join(first.outDir, 'contact/index.html'))).toBe(false);
     // The home page's <title> is the site title.
     expect(readFileSync(join(first.outDir, 'index.html'), 'utf8')).toContain('<title>Test</title>');
   });

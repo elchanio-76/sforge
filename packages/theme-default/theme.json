@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "description": "Accessible default staticforge theme",
   "defaultLayout": "page",
-  "layouts": ["page", "post", "404"],
+  "layouts": ["page", "post", "list", "tag", "tags", "search", "404"],
   "styles": ["css/theme.css"],
   "scripts": []
 }

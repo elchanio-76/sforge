@@ -16,6 +16,15 @@
   {% if description %}
   <meta property="og:description" content="{{ description }}">
   {% endif %}
+  {% for feed in feeds %}
+  <link rel="alternate" type="{{ feed.type }}" title="{{ feed.title }}" href="{{ feed.url }}">
+  {% endfor %}
+  {% if pagination and pagination.prev %}
+  <link rel="prev" href="{{ pagination.prev }}">
+  {% endif %}
+  {% if pagination and pagination.next %}
+  <link rel="next" href="{{ pagination.next }}">
+  {% endif %}
   <meta name="color-scheme" content="light dark">
   <meta name="generator" content="{{ build.generator }}">
   {% for href in theme.styles %}
@@ -30,6 +39,7 @@
   <a class="skip-link" href="#main" data-testid="skip-link">Skip to main content</a>
   {% include "partials/header.njk" %}
   <main id="main" tabindex="-1" data-testid="main">
+    {% include "partials/breadcrumbs.njk" %}
     {% block main %}{% endblock %}
   </main>
   {% include "partials/footer.njk" %}

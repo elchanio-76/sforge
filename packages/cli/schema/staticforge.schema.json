@@ -113,6 +113,17 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 100
+        },
+        "optimize": {
+          "default": true,
+          "description": "Resize content images into responsive AVIF/WebP variants.",
+          "type": "boolean"
+        },
+        "sizes": {
+          "default": "(min-width: 45rem) 45rem, 100vw",
+          "description": "The `sizes` attribute of responsive images: their width in the layout.",
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false

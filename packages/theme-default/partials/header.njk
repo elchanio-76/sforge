@@ -2,5 +2,8 @@
   <div class="wrap">
     <a class="site-title" href="/"{% if page.url == "/" %} aria-current="page"{% endif %}>{{ site.title }}</a>
     {% include "partials/nav.njk" %}
+    {% if search %}
+    <a class="search-link" href="{{ search.url }}" data-testid="search-link"{% if page.url == search.url %} aria-current="page"{% endif %}>Search</a>
+    {% endif %}
   </div>
 </header>

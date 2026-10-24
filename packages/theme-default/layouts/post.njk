@@ -1,6 +1,6 @@
 {% extends "layouts/base.njk" %}
 {% block main %}
-<article class="page post" data-testid="post">
+<article class="page post" data-testid="post" data-pagefind-body>
   <header class="page-header">
     <h1>{{ page.title }}</h1>
     {% if page.date %}
@@ -15,14 +15,11 @@
   <div class="content">
     {{ content | safe }}
   </div>
-  {% if page.tags.length %}
+  {% if page.tagLinks.length %}
   <footer class="post-footer">
     <h2 class="visually-hidden">Tags</h2>
-    <ul class="tags" data-testid="tags">
-      {% for tag in page.tags %}
-      <li>{{ tag }}</li>
-      {% endfor %}
-    </ul>
+    {% set tagLinks = page.tagLinks %}
+    {% include "partials/tag-links.njk" %}
   </footer>
   {% endif %}
 </article>

@@ -18,11 +18,15 @@
     "node": "^22.22.0 || >=24.8.0"
   },
   "dependencies": {
+    "@staticforge/assets": "workspace:*",
     "@staticforge/content": "workspace:*",
     "@staticforge/core": "workspace:*",
     "@staticforge/render": "workspace:*",
+    "hast-util-from-html": "^2.0.3",
+    "hast-util-minify-whitespace": "^1.0.1",
     "hast-util-to-html": "^9.0.5",
     "hastscript": "^9.0.1",
+    "unist-util-visit": "^5.1.0",
     "yaml": "^2.9.1"
   },
   "devDependencies": {

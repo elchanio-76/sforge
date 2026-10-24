@@ -159,7 +159,8 @@ Tell visitors who you are and what they will find here.
  * :root { --color-link: #0b6e4f; }
  */
 `,
-    '.gitignore': 'node_modules/\ndist/\n.sforge/state/\n.sforge/iac/**/.terraform/\n',
+    '.gitignore':
+      'node_modules/\ndist/\n.sforge/cache/\n.sforge/state/\n.sforge/iac/**/.terraform/\n',
   };
 
   const result = writeFiles(dir, files, force);

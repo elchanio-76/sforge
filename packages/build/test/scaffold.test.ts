@@ -33,7 +33,7 @@ describe('initProject', () => {
 
       const build = await buildSite({ rootDir: dir, config: loaded.config });
       expect(build.diagnostics).toEqual([]);
-      expect(build.pages.map((p) => p.url)).toEqual(['/about/', '/', '/404.html']);
+      expect(build.pages.map((p) => p.url)).toEqual(['/', '/404.html', '/about/', '/search/']);
     },
   );
 

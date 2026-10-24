@@ -1,0 +1,13 @@
+{% if pagination and pagination.pages > 1 %}
+<nav class="pagination" aria-label="Pagination" data-testid="pagination">
+  <ul>
+    {% if pagination.prev %}
+    <li><a href="{{ pagination.prev }}" rel="prev">Previous page</a></li>
+    {% endif %}
+    <li class="pagination-status">Page {{ pagination.page }} of {{ pagination.pages }}</li>
+    {% if pagination.next %}
+    <li><a href="{{ pagination.next }}" rel="next">Next page</a></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}

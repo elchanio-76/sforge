@@ -1,0 +1,10 @@
+{# Only below the top level: "Home › About" adds nothing to the navigation. #}
+{% if breadcrumbs.length > 2 %}
+<nav class="breadcrumbs" aria-label="Breadcrumb" data-testid="breadcrumbs">
+  <ol>
+    {% for crumb in breadcrumbs %}
+    <li><a href="{{ crumb.url }}"{% if crumb.current %} aria-current="page"{% endif %}>{{ crumb.title }}</a></li>
+    {% endfor %}
+  </ol>
+</nav>
+{% endif %}

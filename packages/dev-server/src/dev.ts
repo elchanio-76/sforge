@@ -102,6 +102,10 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
         rootDir,
         config: loaded.config,
         scratchDir: outDir,
+        // Stable asset URLs let the client swap stylesheets in place; readable
+        // output helps debugging.
+        fingerprint: false,
+        minify: false,
         ...(options.drafts !== undefined && { drafts: options.drafts }),
         ...(options.generator !== undefined && { generator: options.generator }),
         ...(logger !== undefined && { logger }),
