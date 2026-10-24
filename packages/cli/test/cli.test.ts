@@ -101,6 +101,19 @@ describe('sforge CLI', () => {
     expect(result.stderr).toContain('hint: Run `sforge init`');
   });
 
+  it('resolves `staticforge` imports in a TS config without installing it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sforge-cli-'));
+    writeFileSync(
+      join(dir, 'staticforge.config.ts'),
+      `import { defineConfig } from 'staticforge';
+       export default defineConfig({ site: { title: 'TS', baseUrl: 'https://example.com' } });`,
+    );
+    const result = await sforge(['config', 'validate', '--json', '--config', dir]);
+    expect(result.stderr).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout).data.path).toBe(join(dir, 'staticforge.config.ts'));
+  });
+
   it('prints the resolved config with defaults', async () => {
     const dir = projectWith(validConfig);
     const result = await sforge(['config', 'show', '--json'], { cwd: dir });

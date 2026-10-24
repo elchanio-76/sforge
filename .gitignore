@@ -6,3 +6,4 @@ coverage/
 .sforge/iac/**/.terraform/
 *.log
 .DS_Store
+sites/

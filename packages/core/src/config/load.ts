@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { createJiti } from 'jiti';
 import { parse as parseYaml } from 'yaml';
@@ -17,6 +17,8 @@ export const CONFIG_FILE_NAMES = [
   'staticforge.config.yml',
 ] as const;
 
+const CONFIG_EXTENSIONS = new Set(['.ts', '.mts', '.js', '.mjs', '.json', '.yaml', '.yml']);
+
 export interface LoadedConfig {
   config: SforgeConfig;
   /** Absolute path of the config file. */
@@ -31,9 +33,17 @@ export interface ConfigIssue {
   message: string;
 }
 
+function findInDirectory(dir: string): string | undefined {
+  for (const name of CONFIG_FILE_NAMES) {
+    const candidate = join(dir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 /**
- * Locate the config file: an explicit path if given, otherwise search `cwd`
- * and its ancestors.
+ * Locate the config file. An explicit path may name the file or the project
+ * directory containing it. Otherwise search `cwd` and its ancestors.
  */
 export function findConfigFile(cwd: string, explicitPath?: string): string {
   if (explicitPath !== undefined) {
@@ -41,18 +51,27 @@ export function findConfigFile(cwd: string, explicitPath?: string): string {
     if (!existsSync(path)) {
       throw new SforgeError(ErrorCode.ConfigNotFound, `Config file not found: ${path}`);
     }
+    if (statSync(path).isDirectory()) {
+      const found = findInDirectory(path);
+      if (found === undefined) {
+        throw new SforgeError(ErrorCode.ConfigNotFound, `No staticforge config found in ${path}`, {
+          hint: `Expected one of: ${CONFIG_FILE_NAMES.join(', ')}`,
+        });
+      }
+      return found;
+    }
+    if (!CONFIG_EXTENSIONS.has(extname(path))) {
+      throw new SforgeError(ErrorCode.ConfigLoadFailed, `Unsupported config file type: ${path}`, {
+        hint: `Use one of: ${[...CONFIG_EXTENSIONS].join(', ')}`,
+      });
+    }
     return path;
   }
 
-  let dir = resolve(cwd);
-  for (;;) {
-    for (const name of CONFIG_FILE_NAMES) {
-      const candidate = join(dir, name);
-      if (existsSync(candidate)) return candidate;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
+    const found = findInDirectory(dir);
+    if (found !== undefined) return found;
+    if (dirname(dir) === dir) break;
   }
 
   throw new SforgeError(
@@ -62,14 +81,23 @@ export function findConfigFile(cwd: string, explicitPath?: string): string {
   );
 }
 
-async function readRawConfig(path: string): Promise<unknown> {
+class MissingDefaultExport extends Error {}
+
+async function readRawConfig(path: string, aliases: Record<string, string>): Promise<unknown> {
   const ext = extname(path);
   try {
     if (ext === '.json') return JSON.parse(readFileSync(path, 'utf8'));
     if (ext === '.yaml' || ext === '.yml') return parseYaml(readFileSync(path, 'utf8'));
-    const jiti = createJiti(import.meta.url, { moduleCache: false });
-    return await jiti.import(path, { default: true });
+    const jiti = createJiti(import.meta.url, { moduleCache: false, alias: aliases });
+    const module = await jiti.import<Record<string, unknown>>(path);
+    if (!('default' in module)) throw new MissingDefaultExport();
+    return module.default;
   } catch (error) {
+    if (error instanceof MissingDefaultExport) {
+      throw new SforgeError(ErrorCode.ConfigLoadFailed, `${path} has no default export`, {
+        hint: 'Export the config with `export default defineConfig({ ... })`.',
+      });
+    }
     throw new SforgeError(
       ErrorCode.ConfigLoadFailed,
       `Failed to load ${path}: ${error instanceof Error ? error.message : String(error)}`,
@@ -101,13 +129,18 @@ export function validateConfig(raw: unknown, source = 'config'): SforgeConfig {
 
 export interface LoadConfigOptions {
   cwd?: string;
-  /** Explicit config path (from `--config`). */
+  /** Explicit config file or project directory (from `--config`). */
   configPath?: string;
+  /**
+   * Module specifiers to resolve to fixed paths when evaluating JS/TS configs.
+   * The CLI maps `staticforge` to itself so configs work without installing it.
+   */
+  aliases?: Record<string, string>;
 }
 
 export async function loadConfig(options: LoadConfigOptions = {}): Promise<LoadedConfig> {
   const path = findConfigFile(options.cwd ?? process.cwd(), options.configPath);
-  const raw = await readRawConfig(path);
+  const raw = await readRawConfig(path, options.aliases ?? {});
   return { config: validateConfig(raw, path), path, rootDir: dirname(path) };
 }
 

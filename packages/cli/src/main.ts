@@ -20,7 +20,7 @@ export function createProgram(runtime: Runtime): Command {
     .option('-q, --quiet', 'only log errors')
     .option('-v, --verbose', 'log debug output')
     .option('--cwd <dir>', 'run as if started in <dir>')
-    .option('-c, --config <path>', 'path to the config file')
+    .option('-c, --config <path>', 'config file, or the project directory containing it')
     .option('--no-color', 'disable colored output')
     .option('--non-interactive', 'never prompt (implied when CI is set or stdin is not a TTY)')
     .showSuggestionAfterError()

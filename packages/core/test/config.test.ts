@@ -119,6 +119,22 @@ describe('findConfigFile', () => {
     expect(error.hint).toContain('sforge init');
   });
 
+  it('accepts a project directory as the explicit path', () => {
+    const root = tempProject({ 'site/staticforge.config.yaml': '' });
+    expect(findConfigFile(root, 'site/')).toBe(join(root, 'site/staticforge.config.yaml'));
+  });
+
+  it('does not search parents of an explicit directory', () => {
+    const root = tempProject({ 'staticforge.config.json': '{}', 'site/index.js': '' });
+    const error = expectSforgeError(() => findConfigFile(root, 'site'), ErrorCode.ConfigNotFound);
+    expect(error.hint).toContain('staticforge.config.ts');
+  });
+
+  it('rejects explicit files of unsupported types', () => {
+    const root = tempProject({ 'config.toml': '' });
+    expectSforgeError(() => findConfigFile(root, 'config.toml'), ErrorCode.ConfigLoadFailed);
+  });
+
   it('fails for a missing explicit path', () => {
     const root = tempProject({});
     expectSforgeError(() => findConfigFile(root, 'nope.json'), ErrorCode.ConfigNotFound);
@@ -149,6 +165,29 @@ describe('loadConfig', () => {
       `,
     });
     expect((await loadConfig({ cwd: root })).config.site.title).toBe('TS site');
+  });
+
+  it('requires a default export from JS/TS configs', async () => {
+    const root = tempProject({ 'staticforge.config.mjs': 'export const site = {};' });
+    await expect(loadConfig({ cwd: root })).rejects.toMatchObject({
+      code: ErrorCode.ConfigLoadFailed,
+      hint: expect.stringContaining('export default'),
+    });
+  });
+
+  it('resolves aliased module specifiers in JS/TS configs', async () => {
+    const root = tempProject({
+      'helper.mjs': 'export const defineConfig = (c) => ({ ...c, theme: "aliased" });',
+      'staticforge.config.ts': `
+        import { defineConfig } from 'not-installed';
+        export default defineConfig({ site: { title: 'A', baseUrl: 'https://example.com' } });
+      `,
+    });
+    const loaded = await loadConfig({
+      cwd: root,
+      aliases: { 'not-installed': join(root, 'helper.mjs') },
+    });
+    expect(loaded.config.theme).toBe('aliased');
   });
 
   it('reports parse failures as load errors', async () => {
