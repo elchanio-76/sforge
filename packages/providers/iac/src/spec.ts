@@ -62,6 +62,11 @@ export interface ProfileInput {
 export interface PreparedTarget {
   spec: IacSpec;
   state: StateBackend;
+  /**
+   * Resources that sforge itself changes outside OpenTofu/Terraform (e.g. the
+   * KVS key a deploy switches). Their refresh changes are not reported as drift.
+   */
+  expectedDrift?: string[];
   /** Module inputs to apply before destroying (e.g. allowing non-empty buckets to be deleted). */
   preDestroyInputs?: Record<string, unknown>;
   /**

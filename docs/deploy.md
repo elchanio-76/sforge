@@ -183,8 +183,8 @@ Sent with every response (configure with `security` in the config):
 | `Referrer-Policy`           | `strict-origin-when-cross-origin` (`security.referrerPolicy`)                                                             |
 | `Permissions-Policy`        | `camera=(), microphone=(), geolocation=(), payment=(), usb=()`                                                            |
 
-The search page also gets `'wasm-unsafe-eval'` in `script-src`, because Pagefind uses
-WebAssembly. Inline style attributes are allowed for code highlighting; inline scripts are not.
+The search page and Pagefind's files (`/pagefind/*`, whose Web Worker compiles WebAssembly)
+also get `'wasm-unsafe-eval'` in `script-src`. Inline style attributes are allowed for code highlighting; inline scripts are not.
 Set `security.contentSecurityPolicy` to your own policy, or `false` to send none.
 
 ## GitHub Actions (OIDC)

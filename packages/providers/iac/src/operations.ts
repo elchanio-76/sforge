@@ -194,6 +194,22 @@ export async function apply(ws: Workspace, planFile: string): Promise<ApplySumma
   return { add: summary.add, change: summary.change, remove: summary.remove };
 }
 
+/**
+ * `apply -refresh-only`: record attributes the provider only reports after
+ * creation (a function's status, a bucket's policy, empty lists). Run right
+ * after an apply, so `sforge status` reports only real drift.
+ */
+export async function refreshState(ws: Workspace): Promise<void> {
+  const result = await run(ws, [
+    'apply',
+    '-refresh-only',
+    '-auto-approve',
+    '-input=false',
+    '-json',
+  ]);
+  assertSucceeded(result, `${ws.engine.name} apply -refresh-only`);
+}
+
 /** `output -json`: every root output, sensitive ones included (callers must filter). */
 export async function outputs(ws: Workspace): Promise<Record<string, OutputValue>> {
   const result = await run(ws, ['output', '-json', '-no-color'], false);

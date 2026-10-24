@@ -466,7 +466,7 @@ describe('AWS IaC profile', () => {
       trailing_slash: 'never',
       domain: null,
       ci: null,
-      search_paths: ['/search', '/search.html'],
+      search_paths: ['/search', '/search.html', '/pagefind/*'],
       security_headers: {
         hsts_max_age: 63072000,
         frame_options: 'SAMEORIGIN',

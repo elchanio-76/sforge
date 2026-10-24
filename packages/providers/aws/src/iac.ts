@@ -264,6 +264,8 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
           bootstrap,
         },
         preDestroyInputs: { force_destroy: true },
+        // Deploys and rollbacks switch the active version with the SDK.
+        expectedDrift: ['module.site.aws_cloudfrontkeyvaluestore_key.active'],
         ...(target.domain !== undefined &&
           target.hostedZone === undefined && {
             prePhase: {

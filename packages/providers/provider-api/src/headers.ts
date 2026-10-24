@@ -41,10 +41,18 @@ export function securityHeaders(config: SforgeConfig): SecurityHeaders {
   };
 }
 
-/** Path patterns of the search page, which gets {@link SecurityHeaders.searchContentSecurityPolicy}. */
+/**
+ * Path patterns that get {@link SecurityHeaders.searchContentSecurityPolicy}:
+ * the search page, and Pagefind's files, because its Web Worker compiles the
+ * WebAssembly and a worker follows the CSP of its own script's response.
+ */
 export function searchPaths(config: SforgeConfig): string[] {
   if (!config.search.enabled) return [];
   // The page's URL (routeFor('search.md')), plus its file name where that serves it too.
-  if (!config.build.cleanUrls) return ['/search.html'];
-  return config.build.trailingSlash === 'never' ? ['/search', '/search.html'] : ['/search/*'];
+  const page = !config.build.cleanUrls
+    ? ['/search.html']
+    : config.build.trailingSlash === 'never'
+      ? ['/search', '/search.html']
+      : ['/search/*'];
+  return [...page, '/pagefind/*'];
 }

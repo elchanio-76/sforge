@@ -13,6 +13,7 @@ import {
   outputs,
   plan,
   publicOutputs,
+  refreshState,
 } from './operations.js';
 import { type RunResult, runEngine } from './runner.js';
 import type { IacProfile, IacSpec, PreparedTarget, StateBackend } from './spec.js';
@@ -121,6 +122,11 @@ function write(options: IacRunOptions, ws: Workspace, spec: IacSpec): void {
     vendor: options.config.iac.vendor,
     extraDir: extraHclDir(options.rootDir, options.targetName),
   });
+}
+
+function withoutExpectedDrift(planned: PlanSummary, prepared: PreparedTarget): PlanSummary {
+  const expected = new Set(prepared.expectedDrift ?? []);
+  return { ...planned, drift: planned.drift.filter((d) => !expected.has(d.address)) };
 }
 
 function requireState(state: StateBackend, targetName: string): void {
@@ -280,7 +286,7 @@ export async function provision(options: ProvisionOptions): Promise<ProvisionRes
       };
     }
   }
-  const planned = await plan(ws);
+  const planned = withoutExpectedDrift(await plan(ws), prepared);
   const base = { ...result, ...(bootstrap && { bootstrap }), plan: planned, notices };
   if (options.diff || planned.planFile === undefined) {
     if (!options.diff) {
@@ -298,6 +304,7 @@ export async function provision(options: ProvisionOptions): Promise<ProvisionRes
   }
   const applied = await apply(ws, planned.planFile);
   rmSync(join(ws.dir, planned.planFile), { force: true });
+  await refreshState(ws);
   const values = publicOutputs(await outputs(ws));
   cache(options, engine, values);
   return { ...base, applied: true, apply: applied, outputs: values };
@@ -354,13 +361,16 @@ export async function detectDrift(options: IacRunOptions): Promise<DriftResult> 
   await init(ws);
   const planned = await plan(ws, { refreshOnly: true });
   rmSync(join(ws.dir, 'tfplan'), { force: true });
+  const expected = new Set(prepared.expectedDrift ?? []);
+  const drift = planned.drift.filter((d) => !expected.has(d.address));
   const values = publicOutputs(await outputs(ws));
   return {
     target: options.targetName,
     provider: options.profile.provider,
     engine: { name: engine.name, version: engine.version },
-    drift: planned.drift,
-    drifted: planned.drift.length > 0 || planned.changes,
+    drift,
+    // A refresh-only plan has changes exactly when something drifted.
+    drifted: drift.length > 0,
     outputs: values,
   };
 }

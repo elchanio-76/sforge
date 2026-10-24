@@ -80,6 +80,7 @@ function profile(state: Partial<StateBackend> = {}, module = moduleDir()): IacPr
           ...state,
         },
         preDestroyInputs: { force_destroy: true },
+        expectedDrift: ['module.site.aws_cloudfrontkeyvaluestore_key.active'],
       };
     },
   };
@@ -385,11 +386,11 @@ describe('provision', () => {
       engine: 'tofu',
       outputs: { bucket: 'site-bucket', distribution_id: 'E123' },
     });
-    expect(fake.calls().find((c) => c.args[0] === 'apply')!.args).toEqual([
-      'apply',
-      '-input=false',
-      '-json',
-      'tfplan',
+    const applies = fake.calls().filter((c) => c.args[0] === 'apply');
+    expect(applies.map((c) => c.args)).toEqual([
+      ['apply', '-input=false', '-json', 'tfplan'],
+      // Absorbs attributes only known after creation, so `status` shows no false drift.
+      ['apply', '-refresh-only', '-auto-approve', '-input=false', '-json'],
     ]);
   });
 
@@ -587,6 +588,16 @@ describe('drift and destroy', () => {
             type: 'resource_drift',
             change: { resource: { addr: 'module.site.aws_s3_bucket.site' }, action: 'update' },
           },
+          {
+            '@level': 'info',
+            '@message':
+              'module.site.aws_cloudfrontkeyvaluestore_key.active: Drift detected (update)',
+            type: 'resource_drift',
+            change: {
+              resource: { addr: 'module.site.aws_cloudfrontkeyvaluestore_key.active' },
+              action: 'update',
+            },
+          },
         ],
       },
       output: outputsStep,
@@ -606,6 +617,37 @@ describe('drift and destroy', () => {
       outputs: { bucket: 'site-bucket' },
     });
     expect(fake.calls().find((c) => c.args[0] === 'plan')!.args).toContain('-refresh-only');
+  });
+
+  it('does not report changes sforge makes itself as drift', async () => {
+    const { rootDir, config } = project();
+    const fake = fakeEngine({
+      plan: {
+        exitCode: 2,
+        stdout: [
+          {
+            '@level': 'info',
+            '@message': 'drift',
+            type: 'resource_drift',
+            change: {
+              resource: { addr: 'module.site.aws_cloudfrontkeyvaluestore_key.active' },
+              action: 'update',
+            },
+          },
+        ],
+      },
+      output: outputsStep,
+    });
+    const result = await detectDrift({
+      rootDir,
+      config,
+      targetName: 'staging',
+      profile: profile(),
+      logger,
+      engine: fake.engine,
+      env: {},
+    });
+    expect(result).toMatchObject({ drifted: false, drift: [] });
   });
 
   it('applies the pre-destroy inputs before destroying', async () => {
