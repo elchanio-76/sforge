@@ -132,15 +132,16 @@ export async function checkRendered(options: HeadlessOptions): Promise<Finding[]
   axeSource ??= readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
   const timeout = options.timeoutMs ?? 30_000;
   const browser = await launch(options.executablePath);
-  const server = await startStaticServer({
-    root: () => options.dir,
-    host: '127.0.0.1',
-    port: 0,
-    trailingSlash: options.trailingSlash,
-  });
-
+  let server: Awaited<ReturnType<typeof startStaticServer>> | undefined;
   const contexts: { name: string; context: BrowserContext }[] = [];
   try {
+    server = await startStaticServer({
+      root: () => options.dir,
+      host: '127.0.0.1',
+      port: 0,
+      trailingSlash: options.trailingSlash,
+    });
+    const baseUrl = server.url;
     for (const mode of MODES) {
       contexts.push({
         name: mode.name,
@@ -153,14 +154,17 @@ export async function checkRendered(options: HeadlessOptions): Promise<Finding[]
     const worker = async (): Promise<void> => {
       for (let page = queue.shift(); page !== undefined; page = queue.shift()) {
         options.logger?.debug(`axe: ${page.url}`);
-        findings.push(...(await checkPage(page, contexts, server.url, options.wcag, timeout)));
+        findings.push(...(await checkPage(page, contexts, baseUrl, options.wcag, timeout)));
       }
     };
     await Promise.all(Array.from({ length: options.concurrency ?? 4 }, worker));
     return findings;
   } finally {
-    await browser.close();
-    await server.close();
+    try {
+      await browser.close();
+    } finally {
+      await server?.close();
+    }
   }
 }
 

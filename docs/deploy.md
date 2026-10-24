@@ -10,6 +10,10 @@
 
 AWS targets are available now. Azure Static Web Apps follows in milestone M6.
 
+> Custom domains, PR previews (which need a custom domain on AWS) and the GitHub Actions deploy
+> role are implemented for AWS and covered by the module tests, but have not been verified
+> against a real account yet. That, the Azure equivalents and `sforge ci init` are milestone M9.
+
 ## Quick start (AWS)
 
 ```ts
@@ -206,7 +210,7 @@ request workflows. The role can write the content bucket, switch versions in the
 KeyValueStore, invalidate the distribution, and read and write this target's own state file.
 It cannot change the infrastructure, so run `provision` with an administrator's credentials.
 The account's GitHub OIDC provider is reused if one exists; otherwise it is created and owned
-by this target. `sforge ci init` (milestone M7) will generate the workflows.
+by this target. `sforge ci init` (milestone M9) will generate the workflows.
 
 ## Destroying
 
