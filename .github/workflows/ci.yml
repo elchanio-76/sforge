@@ -36,3 +36,6 @@ jobs:
         run: |
           pnpm sforge --version
           pnpm sforge schema config --json > /dev/null
+          pnpm sforge init "$RUNNER_TEMP/site" --format json
+          pnpm sforge build --cwd "$RUNNER_TEMP/site"
+          pnpm sforge build --cwd examples/basic-site

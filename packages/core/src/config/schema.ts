@@ -126,6 +126,30 @@ export const configSchema = z
         quality: z.int().min(1).max(100).default(75),
       })
       .prefault({}),
+    styles: z
+      .array(
+        z
+          .string()
+          .regex(
+            /^(\/|https?:\/\/)/,
+            'must be a root-relative URL (/assets/site.css) or an http(s) URL',
+          ),
+      )
+      .default([])
+      .describe(
+        'Stylesheets linked on every page, after the theme\'s, e.g. "/assets/css/site.css".',
+      ),
+    scripts: z
+      .array(
+        z
+          .string()
+          .regex(
+            /^(\/|https?:\/\/)/,
+            'must be a root-relative URL (/assets/site.js) or an http(s) URL',
+          ),
+      )
+      .default([])
+      .describe("ES module scripts loaded on every page, after the theme's."),
     collections: z.record(targetName, collectionSchema).default({}),
     search: z.strictObject({ enabled: z.boolean().default(true) }).prefault({}),
     check: z

@@ -1,0 +1,6 @@
+<header class="site-header" data-testid="site-header">
+  <div class="wrap">
+    <a class="site-title" href="/"{% if page.url == "/" %} aria-current="page"{% endif %}>{{ site.title }}</a>
+    {% include "partials/nav.njk" %}
+  </div>
+</header>

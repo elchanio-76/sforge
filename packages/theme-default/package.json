@@ -1,0 +1,16 @@
+{
+  "name": "@staticforge/theme-default",
+  "version": "0.0.0",
+  "description": "Accessible default theme for staticforge",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./theme.json": "./theme.json"
+  },
+  "files": [
+    "theme.json",
+    "layouts",
+    "partials",
+    "assets"
+  ]
+}

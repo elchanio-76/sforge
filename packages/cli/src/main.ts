@@ -1,7 +1,10 @@
 import { Command, CommanderError } from 'commander';
 import { ErrorCode, ExitCode } from '@staticforge/core';
 import type { Runtime } from './command.js';
+import { registerBuildCommand } from './commands/build.js';
 import { registerConfigCommands } from './commands/config.js';
+import { registerInitCommand } from './commands/init.js';
+import { registerNewCommand } from './commands/new.js';
 import { registerSchemaCommand } from './commands/schema.js';
 import { registerVersionCommand } from './commands/version.js';
 import { type Io, processIo } from './io.js';
@@ -31,6 +34,9 @@ export function createProgram(runtime: Runtime): Command {
     });
 
   // Subcommands created below inherit exitOverride and output settings.
+  registerInitCommand(program, runtime);
+  registerNewCommand(program, runtime);
+  registerBuildCommand(program, runtime);
   registerConfigCommands(program, runtime);
   registerSchemaCommand(program, runtime);
   registerVersionCommand(program, runtime);

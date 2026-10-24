@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="{{ page.lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.url == "/" %}{{ site.title }}{% else %}{{ page.title }} | {{ site.title }}{% endif %}</title>
+  {% set description = page.description or site.description %}
+  {% if description %}
+  <meta name="description" content="{{ description }}">
+  {% endif %}
+  <link rel="canonical" href="{{ page.absoluteUrl }}">
+  <meta property="og:type" content="{% if page.layout == 'post' %}article{% else %}website{% endif %}">
+  <meta property="og:title" content="{{ page.title }}">
+  <meta property="og:url" content="{{ page.absoluteUrl }}">
+  <meta property="og:site_name" content="{{ site.title }}">
+  {% if description %}
+  <meta property="og:description" content="{{ description }}">
+  {% endif %}
+  <meta name="color-scheme" content="light dark">
+  <meta name="generator" content="{{ build.generator }}">
+  {% for href in theme.styles %}
+  <link rel="stylesheet" href="{{ href }}">
+  {% endfor %}
+  {% for src in theme.scripts %}
+  <script type="module" src="{{ src }}"></script>
+  {% endfor %}
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <a class="skip-link" href="#main" data-testid="skip-link">Skip to main content</a>
+  {% include "partials/header.njk" %}
+  <main id="main" tabindex="-1" data-testid="main">
+    {% block main %}{% endblock %}
+  </main>
+  {% include "partials/footer.njk" %}
+</body>
+</html>

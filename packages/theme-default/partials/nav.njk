@@ -1,0 +1,9 @@
+{% if nav.length %}
+<nav class="site-nav" aria-label="Main" data-testid="site-nav">
+  <ul>
+    {% for item in nav %}
+    <li><a href="{{ item.url }}"{% if item.current %} aria-current="page"{% elif item.active %} class="active"{% endif %}>{{ item.title }}</a></li>
+    {% endfor %}
+  </ul>
+</nav>
+{% endif %}

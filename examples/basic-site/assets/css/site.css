@@ -1,0 +1,4 @@
+/* Site styles load after the theme, so they can override its variables. */
+:root {
+  --measure: 72ch;
+}

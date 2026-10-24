@@ -1,0 +1,29 @@
+{
+  "name": "@staticforge/render",
+  "version": "0.0.0",
+  "description": "Theme loading and Nunjucks layout rendering",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@staticforge/core": "workspace:*",
+    "@staticforge/theme-default": "workspace:*",
+    "nunjucks": "^3.2.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/nunjucks": "^3.2.6"
+  }
+}

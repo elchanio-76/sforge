@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
@@ -130,6 +130,58 @@ describe('sforge CLI', () => {
   it('rejects unknown schema names', async () => {
     const result = await sforge(['schema', 'nope']);
     expect(result.exitCode).toBe(2);
+  });
+
+  it('initializes, adds content and builds a site', async () => {
+    const parent = mkdtempSync(join(tmpdir(), 'sforge-cli-'));
+    const init = await sforge(['init', 'site', '--title', 'CLI Site', '--json'], { cwd: parent });
+    expect(init.exitCode).toBe(0);
+    expect(JSON.parse(init.stdout).data.created).toContain('staticforge.config.ts');
+
+    const dir = join(parent, 'site');
+    const post = await sforge(['new', 'post', 'first', '--json'], { cwd: dir });
+    expect(JSON.parse(post.stdout).data).toEqual({
+      file: 'content/blog/first.md',
+      url: '/blog/first/',
+    });
+
+    const build = await sforge(['build', '--json'], { cwd: dir });
+    expect(build.exitCode).toBe(0);
+    const envelope = JSON.parse(build.stdout);
+    expect(envelope).toMatchObject({
+      command: 'build',
+      ok: true,
+      data: { summary: { error: 0, warning: 0 } },
+    });
+    expect(envelope.data.pages.map((p: { url: string }) => p.url)).toContain('/blog/first/');
+    expect(readFileSync(join(dir, 'dist/blog/first/index.html'), 'utf8')).toContain(
+      '<meta name="generator" content="staticforge 0.0.0">',
+    );
+  });
+
+  it('refuses to init an existing project', async () => {
+    const dir = projectWith(validConfig);
+    const result = await sforge(['init', '--json'], { cwd: dir });
+    expect(result.exitCode).toBe(2);
+    expect(JSON.parse(result.stdout).error.code).toBe('SF_FILE_EXISTS');
+  });
+
+  it('exits 1 with diagnostics when the build has errors', async () => {
+    const dir = projectWith(validConfig);
+    mkdirSync(join(dir, 'content'));
+    writeFileSync(join(dir, 'content/index.md'), '<img src="a.png">\n');
+
+    const human = await sforge(['build'], { cwd: dir });
+    expect(human.exitCode).toBe(1);
+    expect(human.stderr).toContain(
+      'error content/index.md:1:1 error img-alt Image has no alt attribute (WCAG 1.1.1)',
+    );
+    expect(human.stdout).toMatch(/Built 2 pages .* 1 error, 1 warning/);
+
+    const json = await sforge(['build', '--json'], { cwd: dir });
+    expect(json.exitCode).toBe(1);
+    expect(JSON.parse(json.stdout)).toMatchObject({ ok: false, data: { summary: { error: 1 } } });
+    expect(json.stderr).toBe('');
   });
 
   it('keeps the committed config schema in sync', async () => {

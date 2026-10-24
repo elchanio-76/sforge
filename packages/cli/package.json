@@ -22,6 +22,7 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
+    "@staticforge/build": "workspace:*",
     "@staticforge/core": "workspace:*",
     "commander": "^15.0.0"
   }

@@ -117,6 +117,24 @@
       },
       "additionalProperties": false
     },
+    "styles": {
+      "default": [],
+      "description": "Stylesheets linked on every page, after the theme's, e.g. \"/assets/css/site.css\".",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(\\/|https?:\\/\\/)"
+      }
+    },
+    "scripts": {
+      "default": [],
+      "description": "ES module scripts loaded on every page, after the theme's.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(\\/|https?:\\/\\/)"
+      }
+    },
     "collections": {
       "default": {},
       "type": "object",

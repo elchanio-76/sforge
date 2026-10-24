@@ -25,6 +25,10 @@ export const ErrorCode = {
   ConfigLoadFailed: 'SF_CONFIG_LOAD_FAILED',
   ConfigInvalid: 'SF_CONFIG_INVALID',
   TargetNotFound: 'SF_TARGET_NOT_FOUND',
+  ThemeNotFound: 'SF_THEME_NOT_FOUND',
+  ThemeInvalid: 'SF_THEME_INVALID',
+  FileExists: 'SF_FILE_EXISTS',
+  UnsafePath: 'SF_UNSAFE_PATH',
   Internal: 'SF_INTERNAL',
 } as const;
 
@@ -36,6 +40,10 @@ const exitCodeFor: Record<ErrorCode, ExitCode> = {
   SF_CONFIG_LOAD_FAILED: ExitCode.Usage,
   SF_CONFIG_INVALID: ExitCode.Usage,
   SF_TARGET_NOT_FOUND: ExitCode.Usage,
+  SF_THEME_NOT_FOUND: ExitCode.Usage,
+  SF_THEME_INVALID: ExitCode.Usage,
+  SF_FILE_EXISTS: ExitCode.Usage,
+  SF_UNSAFE_PATH: ExitCode.Usage,
   SF_INTERNAL: ExitCode.Internal,
 };
 

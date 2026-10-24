@@ -7,7 +7,7 @@
 - serves a local preview,
 - provisions and deploys to AWS (private S3 + CloudFront) and Azure Static Web Apps.
 
-> **Status:** early development (milestone M0). See [PLAN.md](PLAN.md) for the design and roadmap.
+> **Status:** early development (milestone M1: building sites). See [PLAN.md](PLAN.md) for the design and roadmap.
 
 ## Development
 
@@ -24,12 +24,30 @@ pnpm sforge --help  # run the built CLI
 After changing the config schema, run `pnpm schema:generate` to refresh
 `packages/cli/schema/staticforge.schema.json` (a test fails if it is stale).
 
+## Quick start
+
+```sh
+sforge init my-site --title "My Site" --base-url https://www.example.com
+cd my-site
+sforge new page guides/getting-started
+sforge new post hello-world
+sforge build            # → dist/
+```
+
+See [docs/content.md](docs/content.md) for project layout, URLs, front-matter and links, and
+[docs/themes.md](docs/themes.md) for the theme contract and template context.
+[examples/basic-site](examples/basic-site) shows every content type.
+
 ## Packages
 
-| Package                              | Purpose                                                    |
-| ------------------------------------ | ---------------------------------------------------------- |
-| [`@staticforge/core`](packages/core) | Config schema and loading, error codes, exit codes, logger |
-| [`staticforge`](packages/cli)        | The `sforge` command-line interface                        |
+| Package                                                | Purpose                                                              |
+| ------------------------------------------------------ | -------------------------------------------------------------------- |
+| [`@staticforge/core`](packages/core)                   | Config schema and loading, diagnostics, error and exit codes, logger |
+| [`@staticforge/content`](packages/content)             | Front-matter, Markdown/HTML parsing, accessibility transforms        |
+| [`@staticforge/render`](packages/render)               | Theme loading and Nunjucks rendering                                 |
+| [`@staticforge/theme-default`](packages/theme-default) | The accessible default theme                                         |
+| [`@staticforge/build`](packages/build)                 | Site build pipeline, `init` and `new` scaffolding                    |
+| [`staticforge`](packages/cli)                          | The `sforge` command-line interface                                  |
 
 ## CLI contract (for scripts and agents)
 
@@ -42,12 +60,18 @@ After changing the config schema, run `pnpm schema:generate` to refresh
 ### Commands available so far
 
 ```
+sforge init [dir]          # scaffold a project (--format ts|json|yaml, --provider aws|azure)
+sforge new page|post <path> # create content with front-matter
+sforge build               # build into dist/ (--drafts, --out, --base-url)
 sforge config validate     # validate staticforge.config.{ts,js,json,yaml}
 sforge config show         # print the resolved config with defaults
 sforge schema config       # JSON Schema of the config file
 sforge schema output       # JSON Schema of the --json envelope
 sforge version
 ```
+
+`sforge build --json` reports every page and a list of diagnostics
+(`{ ruleId, severity, message, file, line, column, wcag?, hint? }`) and exits with code 1 if any are errors.
 
 ## Configuration
 

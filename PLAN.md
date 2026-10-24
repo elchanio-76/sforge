@@ -40,9 +40,11 @@ Decisions made: TypeScript/Node; provision + deploy with **HCL modules run by Op
 ## 2. Repository layout (pnpm monorepo)
 ```
 packages/
-  core/            # config, content graph, pipeline orchestration, types, logger, errors
-  markdown/        # unified md→hast pipeline + plugins (a11y-aware)
-  render/          # Nunjucks env, theme loader, layout resolution, HTML fragment/full-doc detection
+  core/            # config, diagnostics type, logger, errors (no dependencies on other packages)
+  content/         # front-matter, md→hast and html→hast, a11y transforms, fragment/document detection
+  render/          # Nunjucks env, theme loader, layout resolution
+  theme-default/   # accessible default theme (published package, resolved for theme: "default")
+  build/           # discovery, routing, link resolution, orchestration, output + manifest, init/new scaffolding
   assets/          # image/js/css processing, fingerprinting, manifest
   site-features/   # nav, sitemap/robots, collections, tags, pagination, RSS/Atom, Pagefind
   checker/         # rule engine, static + headless checks, autofixers, reporters
@@ -56,8 +58,6 @@ packages/
       terraform/   # HCL: modules/site (SWA + domain), modules/ci-oidc (azuread), state-bootstrap/
   mcp/             # MCP server wrapping core commands
   cli/             # `sforge` binary (commander), output formatting, exit codes
-themes/
-  default/         # accessible reference theme (layouts, partials, css, minimal js)
 examples/
   basic-site/      # md + html + images + video + js; used by e2e tests
 templates/
@@ -71,8 +71,8 @@ my-site/
   staticforge.config.ts
   content/        # .md, .html, nested dirs → URL paths; _index.md for section pages
   static/         # copied verbatim (favicon, robots overrides, videos, downloads)
-  assets/         # processed: images, js entrypoints, css
-  themes/<name>/  # or theme from npm package / path
+  assets/         # served at /assets/; processed in M4 (images, js entrypoints, css)
+  templates/      # project overrides of theme layouts/partials (same paths as the theme)
   data/           # JSON/YAML available to templates
   dist/           # build output (gitignored)
 ```
@@ -80,7 +80,9 @@ Config schema (zod → JSON Schema at `schema/staticforge.schema.json`):
 ```ts
 {
   site: { title, baseUrl, language: 'en', description, author },
-  theme: './themes/default' | '@staticforge/theme-default',
+  theme: 'default' | './themes/mine' | 'some-npm-theme',
+  styles: ['/assets/css/site.css'],   // linked after the theme's on every page
+  scripts: ['/assets/js/site.js'],    // ES modules, after the theme's
   build: { outDir: 'dist', cleanUrls: true, trailingSlash: 'always'|'never', minify: true, drafts: false },
   images: { formats: ['avif','webp'], widths: [480, 960, 1600], quality },
   collections: { blog: { dir: 'content/blog', sortBy: 'date', perPage: 10, feed: { rss: true, atom: true } } },
@@ -100,10 +102,11 @@ Front-matter (YAML): `title` (required), `description`, `layout`, `date`, `tags`
 3. **Parse** each page to HAST:
    - `.md` → unified pipeline (GFM, front-matter, slugs, heading anchors, shiki highlighting, footnotes). Custom plugins:
      - `rehype-a11y-images`: `![alt](src)` → `<picture>` with srcset, width/height, `loading="lazy"`, `decoding="async"`. Missing alt raises a diagnostic.
-     - `rehype-video`: a `![](x.mp4)` or `::video{src captions}` directive produces `<video controls>` plus `<track kind="captions">`.
+     - `rehype-video`: `![caption](x.mp4)` produces `<figure><video controls>` with `<figcaption>`, plus `<track kind="captions">` when a sibling `x.vtt` exists (implemented in M1; a `::video{}` directive is deferred).
      - `rehype-external-links`: `rel="noopener noreferrer"` and visually hidden "(opens in new tab)" text when the target is `_blank`.
      - `rehype-heading-shift`: content starts at h2 when the layout supplies h1 (only one h1 per page).
-   - `.html` → parse5/rehype. **Detection**: a full document (has `<html>` or `<!doctype>`) passes through with the theme CSS and runtime assets injected into `<head>`. A fragment, or a file with front-matter (`<!-- --- -->` block or YAML header), is wrapped in a layout.
+   - `.html` → parse5/rehype. **Detection**: a full document (has `<html>` or `<!doctype>`) passes through with the theme CSS and runtime assets injected into `<head>`. A fragment, or a full document with a YAML `---` front-matter header, is wrapped in a layout. parse5 reports tokenizer errors (duplicate attributes, bad entities) as `html-parse` warnings; tree-construction problems are left to the M3 checker (html-validate).
+   - **Link resolution** (M1): references are written relative to the source file and rewritten for the built site: `other.md` → page URL, co-located files → root-relative, `../../assets/x` → `/assets/x`, `../../static/x` → `/x`. Broken page links → `link-broken` warnings.
 4. **Render** with Nunjucks layouts: `base.njk` (doctype, `<html lang>`, meta charset/viewport, title, description, canonical, OG, skip link, landmarks `header/nav/main#main/footer`), plus `page`, `post`, `list`, `tag` layouts. Context: `page`, `site`, `nav`, `collections`, `data`, `assets()` helper.
 5. **Site features**: nav tree (dir structure + front-matter order; `aria-current="page"`; breadcrumbs with `nav aria-label="Breadcrumb"`), collections with pagination (`rel=prev/next`), tag pages, RSS 2.0 + Atom, `sitemap.xml`, `robots.txt`, `404.html`.
 6. **Assets**: esbuild bundles `assets/js/*.ts|js` entrypoints (ES modules, `type="module"`), lightningcss processes theme and user CSS, sharp produces image variants. Everything is content-hashed and recorded in `asset-manifest.json`. References in HTML are rewritten.
@@ -244,7 +247,7 @@ Generates `.github/workflows/`:
 ## 15. Milestones
 0. **Step 0** ✅: this plan is kept in `PLAN.md` as the project's living design document. Update it when decisions change.
 1. **M0 Scaffold** ✅: monorepo, tooling, CI for the repo itself, `core` config + logger + error codes, `cli` skeleton with `--json`/exit codes, `config validate|show`, `schema config|output`, `version`.
-2. **M1 Build**: markdown pipeline, HTML detection/wrapping, Nunjucks render, default theme, static/assets copy, `sforge build`, `init`, `new`.
+2. **M1 Build** ✅: markdown pipeline, HTML detection/wrapping, link resolution, Nunjucks render, default theme (+ `templates/` overrides, `data/`), static/assets copy, build manifest, basic top-level nav, `sforge build`, `init` (non-interactive; `--format ts|json|yaml`), `new page|post`, `examples/basic-site`, docs/content.md + docs/themes.md.
 3. **M2 Preview**: `dev` (watch + live reload) and `preview`.
 4. **M3 Checker**: rule engine, static rules, html-validate integration, reporters, autofix with source mapping. Then headless axe/Playwright.
 5. **M4 Site features + assets**: nav/breadcrumbs, sitemap/robots/404, collections/tags/pagination/RSS/Atom, sharp images, esbuild/lightningcss, fingerprinting, Pagefind.
