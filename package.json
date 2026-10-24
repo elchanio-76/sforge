@@ -12,7 +12,7 @@
     "clean": "tsc -b --clean",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:iac": "SFORGE_IAC_TESTS=1 vitest run packages/providers/aws/test/workspace.integration.test.ts",
+    "test:iac": "SFORGE_IAC_TESTS=1 vitest run packages/providers/aws/test/workspace.integration.test.ts packages/providers/azure/test/workspace.integration.test.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

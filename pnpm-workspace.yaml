@@ -3,6 +3,8 @@ packages:
   - packages/providers/*
 
 # esbuild's postinstall only verifies its platform binary, which pnpm installs as an
-# optional dependency anyway.
+# optional dependency anyway. keytar (a dependency of the SWA CLI) is a native OS-keychain
+# module; sforge always passes the deployment token itself and never uses a keychain.
 allowBuilds:
   esbuild: false
+  keytar: false

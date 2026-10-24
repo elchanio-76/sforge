@@ -1,0 +1,34 @@
+{
+  "name": "@staticforge/azure",
+  "version": "0.0.0",
+  "description": "Azure provider for staticforge: Static Web Apps, named preview environments, rollback by rebuild",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "terraform/**/*.tf",
+    "terraform/**/*.hcl",
+    "!terraform/**/.terraform.lock.hcl"
+  ],
+  "engines": {
+    "node": "^22.22.0 || >=24.8.0"
+  },
+  "dependencies": {
+    "@azure/arm-appservice": "^19.0.0",
+    "@azure/arm-storage": "^21.0.0",
+    "@azure/identity": "^4.14.0",
+    "@azure/static-web-apps-cli": "^2.1.0",
+    "@azure/storage-blob": "^12.34.0",
+    "@staticforge/build": "workspace:*",
+    "@staticforge/core": "workspace:*",
+    "@staticforge/iac": "workspace:*",
+    "@staticforge/provider-api": "workspace:*"
+  }
+}

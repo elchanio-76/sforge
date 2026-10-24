@@ -1,4 +1,4 @@
-import type { Logger, SforgeConfig, TargetConfig } from '@staticforge/core';
+import type { LoadedConfig, Logger, SforgeConfig, TargetConfig } from '@staticforge/core';
 import type { IacProfile } from '@staticforge/iac';
 
 /** A deployed version (production) or preview, as recorded by the provider. */
@@ -72,6 +72,11 @@ export interface Deployer {
   destroyPreview(previewId: string): Promise<PreviewDestroyResult>;
   /** The URL production is served at, and the active version. */
   current(): Promise<{ url: string; versionId: string | null }>;
+  /**
+   * The URL a preview will be served at, used as `site.baseUrl` when building it.
+   * Undefined when the provider cannot serve previews or does not know the URL.
+   */
+  previewBaseUrl?(previewId: string): string | undefined;
 }
 
 export interface DeployerContext {
@@ -83,6 +88,12 @@ export interface DeployerContext {
   outputs: Record<string, unknown>;
   env: NodeJS.ProcessEnv;
   logger: Logger;
+  /**
+   * Load the project config of another checkout of the same project (config files
+   * may import `staticforge`, which only the CLI knows how to resolve). Providers
+   * that roll back by rebuilding an older commit need it.
+   */
+  loadConfig?(dir: string): Promise<LoadedConfig>;
 }
 
 /** What a cloud provider plugs into sforge. */

@@ -88,17 +88,15 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
         const deployer = await deployerFor(ctx, target);
 
         const outDir = resolve(rootDir, config.build.outDir);
+        const previewBaseUrl =
+          preview === undefined ? undefined : deployer.previewBaseUrl?.(preview);
         let check: Awaited<ReturnType<typeof checkBeforeDeploy>> | undefined;
         if (options.build !== false) {
           // Previews get their own canonical URLs, feeds and sitemap.
           const build = await buildSite({
             rootDir,
             config,
-            ...(preview !== undefined &&
-              target.target.provider === 'aws' &&
-              target.target.previewDomain && {
-                baseUrl: `https://${preview}.${target.target.previewDomain}`,
-              }),
+            ...(previewBaseUrl !== undefined && { baseUrl: previewBaseUrl }),
             generator: `staticforge ${VERSION}`,
             logger: ctx.logger,
           });
@@ -194,8 +192,10 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
         return {
           data: result,
           text: result.existed
-            ? `Removed preview ${result.previewId} (${result.deleted} files)`
-            : `No preview ${result.previewId} was recorded; removed ${result.deleted} leftover files`,
+            ? `Removed preview ${result.previewId}${result.deleted > 0 ? ` (${result.deleted} files)` : ''}`
+            : result.deleted > 0
+              ? `No preview ${result.previewId} was recorded; removed ${result.deleted} leftover files`
+              : `No preview ${result.previewId} exists`,
         };
       }),
     );

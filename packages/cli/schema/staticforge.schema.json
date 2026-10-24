@@ -510,10 +510,15 @@
                 "minLength": 1,
                 "maxLength": 90
               },
+              "createResourceGroup": {
+                "default": true,
+                "description": "Create the resource group (and delete it on destroy). False uses an existing one.",
+                "type": "boolean"
+              },
               "location": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Azure region, e.g. \"westeurope\"."
+                "description": "Azure region, e.g. \"westeurope\". Static Web Apps exist in westus2, centralus, eastus2, westeurope and eastasia."
               },
               "sku": {
                 "default": "Free",
@@ -522,6 +527,13 @@
                   "Free",
                   "Standard"
                 ]
+              },
+              "retainVersions": {
+                "default": 10,
+                "description": "Deployed versions kept in the history that rollback chooses from.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
               },
               "domain": {
                 "type": "string",
@@ -552,6 +564,11 @@
                     "type": "string",
                     "minLength": 3,
                     "maxLength": 63
+                  },
+                  "location": {
+                    "description": "Region of the state storage account. Defaults to the target's location; set it when Azure is not accepting new storage accounts there.",
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "additionalProperties": false

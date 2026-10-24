@@ -8,7 +8,8 @@
 - **Content** is uploaded by `sforge deploy` with the cloud SDK. Every deploy is a new
   version; switching versions (deploy, rollback) takes seconds.
 
-AWS targets are available now. Azure Static Web Apps follows in milestone M6.
+AWS and Azure Static Web Apps targets are available. The sections below describe AWS unless they
+say otherwise; [Azure Static Web Apps](#azure-static-web-apps) lists what differs.
 
 > Custom domains, PR previews (which need a custom domain on AWS) and the GitHub Actions deploy
 > role are implemented for AWS and covered by the module tests, but have not been verified
@@ -212,7 +213,120 @@ It cannot change the infrastructure, so run `provision` with an administrator's 
 The account's GitHub OIDC provider is reused if one exists; otherwise it is created and owned
 by this target. `sforge ci init` (milestone M9) will generate the workflows.
 
-## Destroying
+## Azure Static Web Apps
+
+```ts
+// staticforge.config.ts
+export default defineConfig({
+  site: { title: 'Docs', baseUrl: 'https://docs.example.com' },
+  targets: {
+    prod: { provider: 'azure', resourceGroup: 'rg-docs', location: 'westeurope' },
+  },
+});
+```
+
+```sh
+az login                                       # anything DefaultAzureCredential finds works
+sforge provision prod --bootstrap-state        # once: state storage, then the site
+sforge deploy prod
+sforge versions prod
+sforge deploy prod --preview pr-42             # a named preview environment
+sforge preview-destroy prod pr-42
+sforge rollback prod                           # rebuilds the previous version's commit
+```
+
+> **Regions**: Azure can refuse new resources in a region for a given subscription
+> (`RequestDisallowedByAzure … region is not accepting new customers`). That happened in
+> West Europe for both Storage and Static Web Apps on a new pay-as-you-go subscription, so
+> the example site was verified in `eastus2`. Static Web Apps only exist in five regions, and the
+> state storage can live elsewhere: set `state.location` (e.g. `northeurope`) if it is refused.
+> The content is served from Azure's global edge either way.
+
+**Prerequisites**: an Azure subscription (sforge uses `targets.<name>.subscriptionId`, else
+`AZURE_SUBSCRIPTION_ID` / `ARM_SUBSCRIPTION_ID`, else the one `az login` selected), the Azure CLI
+for `az login`, and Owner (or Contributor plus User Access Administrator) on the subscription for
+`--bootstrap-state`. sforge registers the `Microsoft.Web` and `Microsoft.Storage` resource
+providers itself.
+
+**Target options**: `resourceGroup` (created and deleted with the site unless
+`createResourceGroup: false`), `location` (`westus2`, `centralus`, `eastus2`, `westeurope` or
+`eastasia`: the only regions with Static Web Apps), `sku` (`Free` or `Standard`),
+`retainVersions` (deploys remembered for rollback, default 10) and `state`. `domain`, `dnsZone` and
+`ci` are rejected for now (`SF_UNSUPPORTED`): custom domains and the GitHub Actions identity are
+milestone M9, so the site is served at its `*.azurestaticapps.net` URL. Set `site.baseUrl` to
+that URL (printed by `provision`) so canonical links and the sitemap are right.
+
+### Remote state
+
+`--bootstrap-state` creates, once per subscription, resource group `sforge-state` with a storage
+account `sfstate<hash of the subscription>` and a private `tfstate` container (names and the
+region can be set with `targets.<name>.state`). The account has no public blob access, TLS 1.2 only, **account keys
+disabled** (state is read and written with Microsoft Entra ID), blob versioning and 30 days of soft
+delete. Locking uses blob leases. State is kept at `<project>/<target>.tfstate`.
+
+Subscription **Owner does not include access to blob data**, so the bootstrap also grants
+`Storage Blob Data Contributor` on the account to the identity that runs it, and waits two minutes
+for the role assignment to take effect before migrating its own state into the account. Other
+people (and, from M9, CI) need the same role. If `provision` fails with
+`AuthorizationPermissionMismatch` or a 403 on the state blob, the role is missing or has not
+propagated yet.
+
+### What gets created
+
+The `site` module (`packages/providers/azure/terraform/modules/site`): the resource group and an
+`azurerm_static_web_app` with named preview environments enabled and no repository link. The
+deployment token is read by `sforge deploy` when needed; it is neither an output nor written to any
+file.
+
+### Deploying, versions and rollback
+
+`sforge deploy prod` copies the publishable files of the build (never `.sforge/`) and a generated
+`staticwebapp.config.json` to a temporary directory, uploads it with the `swa` deployment client
+(`@azure/static-web-apps-cli`, which downloads Microsoft's `StaticSitesClient` on first use), and
+waits until Azure reports the environment ready. The generated file carries:
+
+- the `security` headers on every response (and the WebAssembly CSP on the search page and
+  `/pagefind/*`),
+- `trailingSlash` from `build.trailingSlash` (Static Web Apps redirects `/about` to `/about/` itself;
+  `always` becomes SWA's `auto`, because SWA's own `always` would also redirect `style.css` to `style.css/`),
+- `404.html` as the not-found page (status 404),
+- one-year `immutable` caching for fingerprinted files, as one rule per directory that holds only
+  fingerprinted files and per file otherwise. Static Web Apps limits the file to 20 KB: if there
+  are too many files, the rest is cut off with a warning and those files revalidate instead,
+- content types for formats Static Web Apps may not know (`.avif`, `.webp`, `.vtt`, …).
+
+A `static/staticwebapp.config.json` of your own replaces the generated file (with a warning).
+
+Static Web Apps has no version switch, so sforge keeps the history itself: each production deploy
+is recorded (version id `<UTC time>-<git sha>`, files, size) in the state container at
+`_sforge/<project>/<target>/versions.json`, written with ETags so concurrent deploys do not lose
+entries. `sforge rollback prod [--to <versionId|gitSha>]` **rebuilds** the commit of the chosen
+version in a temporary git worktree (with that commit's own config and content; your
+`node_modules` and image cache are shared) and deploys it as a new version marked `rollbackOf`.
+That takes as long as a build plus a deploy, not the seconds of AWS. It needs the commit in the
+repository (in CI, `fetch-depth: 0`), and versions deployed with uncommitted changes cannot be
+rolled back to.
+
+### Previews
+
+`sforge deploy prod --preview pr-42` deploys to a Static Web Apps **named environment** (no custom
+domain needed) and builds it with that environment's URL as `site.baseUrl`. Azure keeps only
+lowercase letters and digits in the name, so `pr-42` is served at
+`https://<app>-pr42.<region>.<n>.azurestaticapps.net`, `sforge versions` lists it as `pr42`, and
+`pr-42` and `pr42` are the same environment. The Free plan allows 3
+preview environments (Standard 10): remove finished ones with `sforge preview-destroy prod pr-42`.
+
+### Limits
+
+Free plan: 250 MB per environment, 500 MB per app, 15,000 files, 100 GB bandwidth per month.
+`deploy` refuses sites over the Free limits before uploading.
+
+### Destroying
+
+`sforge destroy prod --confirm prod` removes the Static Web App (and its resource group, if sforge
+created it). The state storage account and its history are kept.
+
+## Destroying (AWS)
 
 ```sh
 sforge destroy staging --confirm staging
@@ -224,7 +338,10 @@ state file history are kept.
 ## Credentials and errors
 
 AWS credentials come from the SDK's default chain (`AWS_PROFILE`, SSO, environment, OIDC in CI),
-both for sforge and for the engine. Missing or expired credentials fail with `SF_CLOUD_AUTH`.
+both for sforge and for the engine. Azure credentials come from `DefaultAzureCredential` (`az login`,
+environment variables, managed identity, workload identity) for sforge, and the engine uses the
+Azure CLI login or the `ARM_*` variables. Missing or expired credentials, and missing permissions,
+fail with `SF_CLOUD_AUTH`.
 Other error codes: `SF_ENGINE_MISSING`, `SF_STATE_MISSING`, `SF_NOT_PROVISIONED`,
 `SF_IAC_FAILED` (with the engine's diagnostics in `details`), `SF_CONFIRMATION_REQUIRED`
 (non-interactive runs need `--yes`), `SF_DEPLOY_FAILED`, `SF_VERSION_NOT_FOUND`,
@@ -233,7 +350,7 @@ Other error codes: `SF_ENGINE_MISSING`, `SF_STATE_MISSING`, `SF_NOT_PROVISIONED`
 ## Testing the modules
 
 ```sh
-cd packages/providers/aws/terraform/modules/site
-tofu init -backend=false && tofu test     # mocked AWS: no account needed
+cd packages/providers/aws/terraform/modules/site      # or packages/providers/azure/terraform/...
+tofu init -backend=false && tofu test     # mocked cloud: no account needed
 pnpm test:iac                             # validate the generated workspaces with tofu/terraform
 ```

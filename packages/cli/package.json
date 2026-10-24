@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@staticforge/aws": "workspace:*",
+    "@staticforge/azure": "workspace:*",
     "@staticforge/build": "workspace:*",
     "@staticforge/checker": "workspace:*",
     "@staticforge/core": "workspace:*",

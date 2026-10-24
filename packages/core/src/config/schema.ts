@@ -80,8 +80,23 @@ const azureTargetSchema = z.strictObject({
     .optional()
     .describe('Defaults to the subscription of the active credential.'),
   resourceGroup: z.string().min(1).max(90),
-  location: z.string().min(1).describe('Azure region, e.g. "westeurope".'),
+  createResourceGroup: z
+    .boolean()
+    .default(true)
+    .describe('Create the resource group (and delete it on destroy). False uses an existing one.'),
+  location: z
+    .string()
+    .min(1)
+    .describe(
+      'Azure region, e.g. "westeurope". Static Web Apps exist in westus2, centralus, eastus2, westeurope and eastasia.',
+    ),
   sku: z.enum(['Free', 'Standard']).default('Free'),
+  retainVersions: z
+    .int()
+    .min(1)
+    .max(100)
+    .default(10)
+    .describe('Deployed versions kept in the history that rollback chooses from.'),
   domain: hostname.optional(),
   dnsZone: z
     .string()
@@ -96,6 +111,13 @@ const azureTargetSchema = z.strictObject({
         .optional()
         .describe('Defaults to "sfstate" + a hash of the subscription ID.'),
       container: z.string().min(3).max(63).default('tfstate'),
+      location: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Region of the state storage account. Defaults to the target's location; set it when Azure is not accepting new storage accounts there.",
+        ),
     })
     .prefault({})
     .describe('Remote state backend (Azure Blob Storage), created by --bootstrap-state.'),

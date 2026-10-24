@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
@@ -281,17 +281,27 @@ describe('sforge provision', () => {
     expect(forced.exitCode).toBe(0);
   });
 
-  it('reports unknown targets and providers that are not available yet', async () => {
-    const cwd = project({
-      prod: { provider: 'azure', resourceGroup: 'rg', location: 'westeurope' },
-    });
+  it('reports unknown targets', async () => {
+    const cwd = project();
     const unknown = await sforge(['provision', 'nope', '--json'], { cwd });
     expect(unknown.json().error.code).toBe('SF_TARGET_NOT_FOUND');
-    const azure = await sforge(['provision', 'prod', '--json'], { cwd });
-    expect(azure.exitCode).toBe(2);
-    expect(azure.json().error).toMatchObject({
+  });
+
+  it('tells Azure targets that custom domains are not supported yet', async () => {
+    // Rejected before any Azure call is made.
+    const cwd = project({
+      prod: {
+        provider: 'azure',
+        resourceGroup: 'rg',
+        location: 'westeurope',
+        domain: 'www.example.com',
+      },
+    });
+    const result = await sforge(['provision', 'prod', '--json'], { cwd });
+    expect(result.exitCode).toBe(2);
+    expect(result.json().error).toMatchObject({
       code: 'SF_UNSUPPORTED',
-      hint: expect.stringContaining('M6'),
+      hint: expect.stringContaining('M9'),
     });
   });
 });
@@ -426,6 +436,32 @@ describe('sforge deploy, versions and rollback', () => {
     expect(rolled.exitCode).toBe(0);
     expect(rolled.stdout).toContain('now serves v1 (was v2)');
     expect(fake.rollbacks).toEqual(['v1']);
+  });
+
+  it('builds a preview with the URL the provider will serve it at', async () => {
+    const cwd = project({
+      prod: { provider: 'azure', resourceGroup: 'rg', location: 'westeurope' },
+    });
+    const { provider, deploys } = fakeProvider();
+    const inner = provider.createDeployer({} as never);
+    const azure: Provider = {
+      ...provider,
+      id: 'azure',
+      iac: { ...provider.iac, provider: 'azure' },
+      createDeployer: () => ({
+        ...inner,
+        previewBaseUrl: (id) => `https://app-${id}.westeurope.azurestaticapps.net`,
+      }),
+    };
+    const result = await sforge(['deploy', 'prod', '--preview', 'pr-1', '--no-check', '--json'], {
+      cwd,
+      env: engineEnv({ output: { stdout: [JSON.stringify(outputs)] } }).env,
+      providers: { azure },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(deploys[0]).toMatchObject({ preview: 'pr-1' });
+    const home = readFileSync(join(cwd, 'dist', 'index.html'), 'utf8');
+    expect(home).toContain('https://app-pr-1.westeurope.azurestaticapps.net/');
   });
 
   it('validates preview ids before building', async () => {

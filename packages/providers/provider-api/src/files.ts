@@ -103,6 +103,22 @@ export function gitShortSha(dir: string, env: NodeJS.ProcessEnv = process.env): 
   }
 }
 
+/** Whether the working tree of `dir` has uncommitted changes (false outside a git checkout). */
+export function gitIsDirty(dir: string): boolean {
+  try {
+    return (
+      execFileSync('git', ['status', '--porcelain', '--', '.'], {
+        cwd: dir,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+        .toString()
+        .trim() !== ''
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** `<UTC timestamp>-<git sha>`, e.g. "20261024T173405Z-6ffcbe4": sortable and traceable. */
 export function newVersionId(date: Date, sha: string | undefined): string {
   const stamp = date

@@ -264,6 +264,9 @@ export function createAwsDeployer(
   const previewUrl = (id: string) => `https://${id}.${out().previewDomain}`;
 
   return {
+    previewBaseUrl: (id) =>
+      target.previewDomain === undefined ? undefined : `https://${id}.${target.previewDomain}`,
+
     async current() {
       const { doc } = await loadDocument();
       return { url: out().url, versionId: doc.active };

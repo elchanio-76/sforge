@@ -18,3 +18,8 @@ export function loadProjectConfig(ctx: CommandContext): Promise<LoadedConfig> {
     aliases: { staticforge: selfEntry },
   });
 }
+
+/** Load the config of the project in `dir` (e.g. another checkout of the same repository). */
+export function loadProjectConfigAt(dir: string): Promise<LoadedConfig> {
+  return loadConfig({ cwd: dir, aliases: { staticforge: selfEntry } });
+}

@@ -1,4 +1,5 @@
 import { createAwsProvider } from '@staticforge/aws';
+import { createAzureProvider } from '@staticforge/azure';
 import {
   type LoadedConfig,
   type TargetConfig,
@@ -15,17 +16,13 @@ import {
 import type { Deployer, Provider } from '@staticforge/provider-api';
 import type { Runtime } from './command.js';
 import type { CommandContext } from './context.js';
+import { loadProjectConfigAt } from './project.js';
 
 /** The provider of a target; tests inject fakes through the runtime. */
 export function providerFor(runtime: Runtime, target: TargetConfig): Provider {
   const injected = runtime.providers?.[target.provider];
   if (injected !== undefined) return injected;
-  if (target.provider === 'aws') return createAwsProvider();
-  throw new SforgeError(
-    ErrorCode.Unsupported,
-    `The ${target.provider} provider is not available yet`,
-    { hint: 'Azure Static Web Apps support is planned for milestone M6; AWS targets work today.' },
-  );
+  return target.provider === 'aws' ? createAwsProvider() : createAzureProvider();
 }
 
 export interface TargetContext {
@@ -73,6 +70,7 @@ export async function deployerFor(ctx: CommandContext, target: TargetContext): P
     outputs,
     env: ctx.io.env,
     logger: ctx.logger,
+    loadConfig: (dir) => loadProjectConfigAt(dir),
   });
 }
 
