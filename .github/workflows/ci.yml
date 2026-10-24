@@ -43,3 +43,28 @@ jobs:
           pnpm sforge build --cwd examples/basic-site
           pnpm sforge check --cwd "$RUNNER_TEMP/site"
           pnpm sforge check --cwd examples/basic-site --format sarif --output "$RUNNER_TEMP/check.sarif"
+
+  iac:
+    name: HCL modules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.13.1
+          tofu_wrapper: false
+      - name: Format
+        run: tofu fmt -check -recursive -diff packages/providers/aws/terraform
+      - name: Module tests (mocked AWS)
+        run: |
+          for dir in packages/providers/aws/terraform/modules/site packages/providers/aws/terraform/state-bootstrap; do
+            (cd "$dir" && tofu init -backend=false -input=false && tofu test)
+          done
+      - name: Validate the generated workspaces
+        run: pnpm test:iac

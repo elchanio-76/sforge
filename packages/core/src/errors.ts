@@ -32,6 +32,28 @@ export const ErrorCode = {
   NotBuilt: 'SF_NOT_BUILT',
   PortInUse: 'SF_PORT_IN_USE',
   BrowserMissing: 'SF_BROWSER_MISSING',
+  /** No usable OpenTofu/Terraform binary, and none could be downloaded. */
+  EngineMissing: 'SF_ENGINE_MISSING',
+  /** The OpenTofu/Terraform run failed (plan/apply/init errors). */
+  IacFailed: 'SF_IAC_FAILED',
+  /** The target's infrastructure has not been provisioned (no outputs). */
+  NotProvisioned: 'SF_NOT_PROVISIONED',
+  /** The target's remote state backend does not exist yet. */
+  StateMissing: 'SF_STATE_MISSING',
+  /** No cloud credentials, or they are expired or lack permissions. */
+  CloudAuth: 'SF_CLOUD_AUTH',
+  /** A destructive or billable operation needs --yes/--confirm in non-interactive mode. */
+  ConfirmationRequired: 'SF_CONFIRMATION_REQUIRED',
+  /** The operation was declined at the confirmation prompt. */
+  Aborted: 'SF_ABORTED',
+  /** The target's provider does not support this operation (yet). */
+  Unsupported: 'SF_UNSUPPORTED',
+  /** `deploy` refused because `check` found problems at or above check.failOn. */
+  CheckFailed: 'SF_CHECK_FAILED',
+  /** A cloud API call failed during deploy, rollback or previews. */
+  DeployFailed: 'SF_DEPLOY_FAILED',
+  /** The target has no recorded deployment or the requested version does not exist. */
+  VersionNotFound: 'SF_VERSION_NOT_FOUND',
   Internal: 'SF_INTERNAL',
 } as const;
 
@@ -50,6 +72,17 @@ const exitCodeFor: Record<ErrorCode, ExitCode> = {
   SF_NOT_BUILT: ExitCode.Usage,
   SF_PORT_IN_USE: ExitCode.Usage,
   SF_BROWSER_MISSING: ExitCode.Usage,
+  SF_ENGINE_MISSING: ExitCode.Usage,
+  SF_IAC_FAILED: ExitCode.Failure,
+  SF_NOT_PROVISIONED: ExitCode.Usage,
+  SF_STATE_MISSING: ExitCode.Usage,
+  SF_CLOUD_AUTH: ExitCode.Usage,
+  SF_CONFIRMATION_REQUIRED: ExitCode.Usage,
+  SF_ABORTED: ExitCode.Failure,
+  SF_UNSUPPORTED: ExitCode.Usage,
+  SF_CHECK_FAILED: ExitCode.Failure,
+  SF_DEPLOY_FAILED: ExitCode.Failure,
+  SF_VERSION_NOT_FOUND: ExitCode.Usage,
   SF_INTERNAL: ExitCode.Internal,
 };
 

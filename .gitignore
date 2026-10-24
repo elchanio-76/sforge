@@ -5,6 +5,11 @@ coverage/
 **/.sforge/cache/
 **/.sforge/state/
 **/.sforge/iac/**/.terraform/
+# Provider caches and lock files of `tofu test` runs in the packaged HCL modules
+packages/providers/*/terraform/**/.terraform/
+packages/providers/*/terraform/**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
 *.log
 .DS_Store
 sites/

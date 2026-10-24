@@ -1,5 +1,6 @@
 packages:
   - packages/*
+  - packages/providers/*
 
 # esbuild's postinstall only verifies its platform binary, which pnpm installs as an
 # optional dependency anyway.

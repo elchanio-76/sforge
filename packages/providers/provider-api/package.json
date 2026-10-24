@@ -1,0 +1,26 @@
+{
+  "name": "@staticforge/provider-api",
+  "version": "0.0.0",
+  "description": "Provider interface and shared deploy logic (manifests, headers, versions) for staticforge",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": "^22.22.0 || >=24.8.0"
+  },
+  "dependencies": {
+    "@staticforge/build": "workspace:*",
+    "@staticforge/core": "workspace:*",
+    "@staticforge/iac": "workspace:*",
+    "@staticforge/server": "workspace:*"
+  }
+}

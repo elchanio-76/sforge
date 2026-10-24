@@ -29,7 +29,8 @@ export interface StaticServer {
 
 const TEXT_TYPES = /^(text\/|application\/(javascript|json|xml|manifest\+json)|image\/svg\+xml)/;
 
-function contentType(path: string): string {
+/** Content-Type for a file name, with a UTF-8 charset for text. */
+export function contentType(path: string): string {
   const type = mime.getType(path) ?? 'application/octet-stream';
   return TEXT_TYPES.test(type) ? `${type}; charset=utf-8` : type;
 }

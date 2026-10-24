@@ -1,3 +1,4 @@
+import { createInterface } from 'node:readline/promises';
 import type { Writable } from 'node:stream';
 
 /** Process boundary, injectable so commands can be tested without spawning. */
@@ -9,6 +10,8 @@ export interface Io {
   cwd: string;
   /** Run `handler` once on SIGINT/SIGTERM; returns an unsubscribe function. */
   onShutdown(handler: () => void): () => void;
+  /** Ask a question on stderr and read one line from stdin (interactive runs only). */
+  prompt(question: string): Promise<string>;
 }
 
 export function processIo(): Io {
@@ -28,6 +31,14 @@ export function processIo(): Io {
       return () => {
         for (const signal of signals) process.off(signal, once);
       };
+    },
+    async prompt(question) {
+      const rl = createInterface({ input: process.stdin, output: process.stderr });
+      try {
+        return await rl.question(question);
+      } finally {
+        rl.close();
+      }
     },
   };
 }

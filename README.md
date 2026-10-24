@@ -8,7 +8,7 @@
 - serves a local preview,
 - provisions and deploys to AWS (private S3 + CloudFront) and Azure Static Web Apps.
 
-> **Status:** early development (milestone M4: site features and assets). See [PLAN.md](PLAN.md) for the design and roadmap.
+> **Status:** early development (milestone M5: provisioning and deploying to AWS). See [PLAN.md](PLAN.md) for the design and roadmap.
 
 ## Development
 
@@ -36,27 +36,33 @@ sforge dev              # http://127.0.0.1:4321, rebuilds and reloads on every c
 sforge check            # accessibility and link checks; --fix repairs what it safely can
 sforge build            # → dist/
 sforge preview          # serve dist/ exactly as production will
+sforge provision staging --bootstrap-state   # AWS: private S3 + CloudFront (OpenTofu/Terraform)
+sforge deploy staging   # build, check, upload a new version and switch to it
 ```
 
 See [docs/content.md](docs/content.md) for project layout, URLs, front-matter and links,
 [docs/themes.md](docs/themes.md) for the theme contract and template context, and
-[docs/checker.md](docs/checker.md) for the checks, fixes and reports.
+[docs/checker.md](docs/checker.md) for the checks, fixes and reports, and
+[docs/deploy.md](docs/deploy.md) for provisioning, deploys, versions, previews and CI roles.
 [examples/basic-site](examples/basic-site) shows every content type.
 
 ## Packages
 
-| Package                                                | Purpose                                                               |
-| ------------------------------------------------------ | --------------------------------------------------------------------- |
-| [`@staticforge/core`](packages/core)                   | Config schema and loading, diagnostics, error and exit codes, logger  |
-| [`@staticforge/content`](packages/content)             | Front-matter, Markdown/HTML parsing, accessibility transforms         |
-| [`@staticforge/render`](packages/render)               | Theme loading and Nunjucks rendering                                  |
-| [`@staticforge/theme-default`](packages/theme-default) | The accessible default theme                                          |
-| [`@staticforge/assets`](packages/assets)               | Images (sharp), CSS (Lightning CSS), JS (esbuild), search (Pagefind)  |
-| [`@staticforge/build`](packages/build)                 | Build pipeline, collections, tags, feeds, sitemap, `init` and `new`   |
-| [`@staticforge/server`](packages/server)               | Static file server with the production URL semantics                  |
-| [`@staticforge/checker`](packages/checker)             | `check`: source, output and headless (axe-core) rules, fixes, reports |
-| [`@staticforge/dev-server`](packages/dev-server)       | `dev` (watch, live reload, problems overlay) and `preview` servers    |
-| [`staticforge`](packages/cli)                          | The `sforge` command-line interface                                   |
+| Package                                                        | Purpose                                                               |
+| -------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [`@staticforge/core`](packages/core)                           | Config schema and loading, diagnostics, error and exit codes, logger  |
+| [`@staticforge/content`](packages/content)                     | Front-matter, Markdown/HTML parsing, accessibility transforms         |
+| [`@staticforge/render`](packages/render)                       | Theme loading and Nunjucks rendering                                  |
+| [`@staticforge/theme-default`](packages/theme-default)         | The accessible default theme                                          |
+| [`@staticforge/assets`](packages/assets)                       | Images (sharp), CSS (Lightning CSS), JS (esbuild), search (Pagefind)  |
+| [`@staticforge/build`](packages/build)                         | Build pipeline, collections, tags, feeds, sitemap, `init` and `new`   |
+| [`@staticforge/server`](packages/server)                       | Static file server with the production URL semantics                  |
+| [`@staticforge/checker`](packages/checker)                     | `check`: source, output and headless (axe-core) rules, fixes, reports |
+| [`@staticforge/dev-server`](packages/dev-server)               | `dev` (watch, live reload, problems overlay) and `preview` servers    |
+| [`@staticforge/iac`](packages/providers/iac)                   | OpenTofu/Terraform: engine download, workspaces, runner, state        |
+| [`@staticforge/provider-api`](packages/providers/provider-api) | Provider interface, manifests, cache and security headers             |
+| [`@staticforge/aws`](packages/providers/aws)                   | AWS: HCL modules, S3 + CloudFront deployer, versions, previews        |
+| [`staticforge`](packages/cli)                                  | The `sforge` command-line interface                                   |
 
 ## CLI contract (for scripts and agents)
 
@@ -64,7 +70,9 @@ See [docs/content.md](docs/content.md) for project layout, URLs, front-matter an
   The envelope is `{ schemaVersion, command, ok, data?, error? }`; see `sforge schema output`.
 - Errors carry a stable `error.code` (`SF_CONFIG_INVALID`, `SF_CONFIG_NOT_FOUND`, …). Match on the code, not the message.
 - Exit codes: `0` success, `1` the command ran and found failures, `2` usage or config error, `3` internal error.
-- `--non-interactive` (implied when `CI` is set or stdin is not a TTY) never prompts.
+- `--non-interactive` (implied when `CI` is set or stdin is not a TTY) never prompts:
+  `provision` and `rollback` then need `--yes`, `destroy` needs `--confirm <target>`
+  (`SF_CONFIRMATION_REQUIRED` otherwise).
 
 ### Commands available so far
 
@@ -75,6 +83,14 @@ sforge build               # build into dist/ (--drafts, --out, --base-url)
 sforge dev                 # build, serve and live-reload (--port, --host, --open, --drafts)
 sforge preview             # serve an existing build (--port, --host, --open, --dir)
 sforge check               # check the site (--fix, --dry-run, --no-headless, --pages, --format, --output)
+sforge provision <target>  # create/update infrastructure (--diff, --bootstrap-state, --local-state, --no-wait, --yes)
+sforge status <target>     # URL, active version, drift (exit 1 on drift)
+sforge iac <cmd> <target>  # path, or init|plan|apply|output|state|… in the generated workspace
+sforge deploy <target>     # build, check, deploy (--preview <id>, --no-build, --no-check, --dry-run, --invalidate)
+sforge versions <target>   # deployed versions and previews
+sforge rollback <target>   # serve the previous version (--to <versionId>, --yes)
+sforge preview-destroy <target> <id>
+sforge destroy <target> --confirm <target>
 sforge config validate     # validate staticforge.config.{ts,js,json,yaml}
 sforge config show         # print the resolved config with defaults
 sforge schema config       # JSON Schema of the config file

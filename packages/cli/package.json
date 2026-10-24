@@ -22,10 +22,13 @@
     "node": "^22.22.0 || >=24.8.0"
   },
   "dependencies": {
+    "@staticforge/aws": "workspace:*",
     "@staticforge/build": "workspace:*",
     "@staticforge/checker": "workspace:*",
     "@staticforge/core": "workspace:*",
     "@staticforge/dev-server": "workspace:*",
+    "@staticforge/iac": "workspace:*",
+    "@staticforge/provider-api": "workspace:*",
     "commander": "^15.0.0"
   }
 }

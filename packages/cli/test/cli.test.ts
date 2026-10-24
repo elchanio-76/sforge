@@ -38,6 +38,7 @@ function startSforge(args: string[], { cwd, variables = {} }: RunOptions = {}) {
       handlers.push(handler);
       return () => handlers.splice(handlers.indexOf(handler), 1);
     },
+    prompt: async () => '',
   };
   const exit = run(['node', 'sforge', ...args], io);
   return {

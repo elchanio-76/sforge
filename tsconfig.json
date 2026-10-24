@@ -23,6 +23,15 @@
       "path": "packages/checker"
     },
     {
+      "path": "packages/providers/iac"
+    },
+    {
+      "path": "packages/providers/provider-api"
+    },
+    {
+      "path": "packages/providers/aws"
+    },
+    {
       "path": "packages/dev-server"
     },
     {

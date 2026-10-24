@@ -29,10 +29,10 @@ Decisions made: TypeScript/Node; provision + deploy with **HCL modules run by Op
 | Search | Pagefind 1.5 via its Node API (`addHTMLFile` per finished page), own accessible UI in the default theme |
 | Dev server | `node:http` static server + `chokidar` 5 watcher + Server-Sent Events live reload (no WebSocket dependency); full rebuild into a temp dir per change (incremental rebuilds deferred to M8) |
 | Checker | `html-validate` 11 (`standard` + `a11y` + `document` presets), `axe-core` in headless Chromium driven by `playwright-core` (no browser download at install; `chromium-headless-shell` installed on demand), custom source and output rules (links, landmarks, headings, lang/title, media), `diff` for `--dry-run` |
-| Provisioning (IaC) | **HCL modules** shipped in the package, run by **OpenTofu** (default; pinned version, downloaded and SHA256-verified into `~/.cache/staticforge/bin`) or **Terraform** from PATH (`iac.engine`). Driven by spawning the CLI with `-json` output, which is parsed into progress events and outputs |
-| AWS runtime | AWS SDK v3 (`client-s3`, `client-cloudfront`, `client-cloudfront-keyvaluestore`, `client-sts`) for deploy, rollback and previews |
+| Provisioning (IaC) | **HCL modules** shipped in the package, run by **OpenTofu** (default; pinned 1.13.1, downloaded from GitHub releases and SHA-256-verified against checksums embedded in sforge, into `~/.cache/staticforge/bin`; tarball read in-process, no system `tar`) or **Terraform** ≥ 1.10 from PATH (`iac.engine`). Driven by spawning the CLI with `-json` output, which is parsed into progress events, plan summaries, drift and diagnostics |
+| AWS runtime | AWS SDK v3 (`client-s3`, `client-cloudfront`, `client-cloudfront-keyvaluestore` with the pure-JS `signature-v4a` signer, `client-sts`, `client-iam`) for deploy, rollback, previews and provisioning lookups |
 | Azure runtime | `@azure/arm-appservice` (Static Sites secrets/environments), `@azure/identity`, SWA content deploy via `@azure/static-web-apps-cli` deploy client |
-| IaC quality | `tofu fmt -check`, `tofu validate`, `tflint`, `checkov`/`trivy config` and `tofu test` with mocked providers |
+| IaC quality | `tofu fmt -check`, `tofu test` with mocked providers (passes on OpenTofu 1.13 and Terraform 1.16), `validate` of the generated workspaces with both engines (`pnpm test:iac`); `tflint` and `checkov`/`trivy config` still to add (M8) |
 | MCP | `@modelcontextprotocol/sdk` (stdio transport) |
 | Tests | `vitest` (unit), Playwright test (e2e preview + a11y), `aws-sdk-client-mock`, snapshot tests of built output |
 | Lint | ESLint + Prettier, `tsc --noEmit` |
@@ -51,13 +51,14 @@ packages/
   server/          # static file server with production URL semantics (resolveRequest); used by dev, preview and the checker
   checker/         # source/output/rendered rules, de-duplication, autofixes, reporters (pretty/json/sarif/junit)
   dev-server/      # watcher, temp-dir builds, SSE live reload, problems overlay, preview
-  providers/
-    provider-api/  # Provider interface + shared deploy logic (diffing, manifest)
-    iac/           # engine resolver/downloader, workspace generator, tofu/terraform runner, state bootstrap
-    aws/           # deployer, versions, rollback, previews (SDK)
-      terraform/   # HCL: modules/site (S3+OAC+CloudFront+KVS+function), modules/cert, modules/ci-oidc, state-bootstrap/
-    azure/         # deployer, previews, rollback (SDK)
-      terraform/   # HCL: modules/site (SWA + domain), modules/ci-oidc (azuread), state-bootstrap/
+  providers/       # packages/providers/* (M5)
+    provider-api/  # Provider interface + shared deploy logic (manifest diffing, cache classes, security headers, version ids)
+    iac/           # engine resolver/downloader, workspace generator, tofu/terraform runner, state bootstrap, drift
+    aws/           # IaC profile, deployer, versions, rollback, previews (SDK), CloudFront router rules
+      terraform/   # HCL: modules/site (S3+OAC+CloudFront+KVS+router function+headers+ACM/Route 53+CI role+logs), state-bootstrap/
+                   # (the certificate and CI role live in modules/site; separate cert/ci-oidc modules were dropped in M5)
+    azure/         # (M6) deployer, previews, rollback (SDK)
+      terraform/   # (M6) HCL: modules/site (SWA + domain), modules/ci-oidc (azuread), state-bootstrap/
   mcp/             # MCP server wrapping core commands
   cli/             # `sforge` binary (commander), output formatting, exit codes
 examples/
@@ -90,8 +91,10 @@ Config schema (zod → JSON Schema at `schema/staticforge.schema.json`):
   collections: { blog: { dir: 'content/blog', sortBy: 'date', perPage: 10, feed: { rss: true, atom: true } } },
   search: { enabled: true },
   check: { wcag: '2.2-AA', failOn: 'error', ignore: [ruleIds], headless: true },
+  security: { contentSecurityPolicy, hsts: { maxAge, includeSubDomains, preload } | false, referrerPolicy, frameOptions, permissionsPolicy },
+  iac: { engine: 'tofu' | 'terraform', version?, vendor: false, name? },
   targets: {
-    staging: { provider: 'aws', region: 'eu-central-1', domain?: 'staging.example.com', hostedZone?: 'example.com', retainVersions: 10 },
+    staging: { provider: 'aws', region: 'eu-central-1', domain?: 'staging.example.com', hostedZone?: 'example.com', previewDomain?, retainVersions: 10, logging, wafWebAclArn?, state: { bucket?, region?, kmsKeyArn? }, ci? },
     prod:    { provider: 'azure', resourceGroup, location, sku: 'Free'|'Standard', domain? }
   }
 }
@@ -159,63 +162,69 @@ Exit codes: `0` clean, `1` problems at or above `failOn`, `2` usage/config error
 - `sforge preview [--port 4322] [--dir]` serves an existing build with the same semantics, without the client.
 - Both listen on 127.0.0.1 by default; `--host` without a value binds 0.0.0.0 with a warning. Under `--json` they write the envelope when ready, then run until SIGINT/SIGTERM (exit 0).
 
-## 8a. IaC layer (`providers/iac`)
+## 8a. IaC layer (`providers/iac`) ✅ (M5)
 - **Split of responsibilities**: OpenTofu/Terraform owns *infrastructure* (buckets, distribution, functions, certs, DNS, SWA resource, CI identities). The TypeScript SDK deployers own *runtime operations* (content upload, KeyValueStore version switch, rollback, PR previews), because those change on every deploy and would churn state.
 - **Engine resolution**: `iac.engine: 'tofu' | 'terraform'` (default `tofu`). Use the binary from PATH if its version is within the supported range. Otherwise download the pinned OpenTofu release and verify its checksum. `iac.version` overrides the pin.
-- **Workspace generation**: for each target, sforge writes `.sforge/iac/<target>/` containing `main.tf` (a `module` block that sources the packaged module by absolute path, or a copied vendored module when `iac.vendor: true` for auditability), `backend.tf`, `terraform.tfvars.json` (generated from validated config) and `.terraform.lock.hcl` (committed for provider pinning). Users can also run `tofu` in that directory directly.
+- **Workspace generation**: for each target, sforge writes `.sforge/iac/<target>/` before every run: `main.tf.json` (required providers, provider blocks, a `module` block sourcing the packaged module by relative path, or a vendored copy in `modules/` with `iac.vendor: true`, every input passed from a root variable, re-exported outputs), `backend.tf.json`, `terraform.tfvars.json` (from the validated config) and a `.gitignore`. The first `init` runs `providers lock` for linux/darwin/windows, so the committed `.terraform.lock.hcl` works in CI. Users can also run `tofu` in that directory directly. Profiles (`IacProfile.prepare`) supply the spec per provider; the generic layer knows no cloud.
 - **Remote state, in each target's own cloud**:
-  - `sforge provision <target> --bootstrap-state` applies a small `state-bootstrap` module with *local* state. It then migrates (`init -migrate-state`) into the backend it created.
-  - **AWS**: S3 bucket `sforge-state-<accountId>-<region>` with BPA on, versioning, SSE (KMS optional), TLS-only policy and **S3 native locking** (`use_lockfile = true`, no DynamoDB table). Key `<site>/<target>.tfstate`.
-  - **Azure**: resource group, plus a Storage Account with no public blob access, TLS 1.2, versioning and soft delete, plus container `tfstate`. Blob lease locking; Entra (`use_azuread_auth`) authentication instead of access keys.
+  - `sforge provision <target> --bootstrap-state` applies a small `state-bootstrap` module with *local* state in `.sforge/iac/_state/<backend id>/`. It then migrates (`init -migrate-state -force-copy`) into the backend it created (key `_sforge/state-bootstrap.tfstate`). An existing backend is never touched (the bucket is shared by all sites of an account and region); a bootstrap whose migration failed resumes on the next run.
+  - **AWS**: S3 bucket `sforge-state-<accountId>-<region>` (overridable: `targets.<n>.state.bucket/region/kmsKeyArn`) with BPA on, versioning, SSE (KMS optional), TLS-only policy, `prevent_destroy` and **S3 native locking** (`use_lockfile = true`, no DynamoDB table). Key `<project>/<target>.tfstate`, where `<project>` is `iac.name` or a slug of the `site.baseUrl` host. Existence is checked with `HeadBucket`; a 403 (someone else's bucket) is an `SF_CLOUD_AUTH` error with a hint.
+  - **Azure** (M6, with the Azure profile): resource group, plus a Storage Account with no public blob access, TLS 1.2, versioning and soft delete, plus container `tfstate`. Blob lease locking; Entra (`use_azuread_auth`) authentication instead of access keys. The config schema (`targets.<n>.state.resourceGroup/storageAccount/container`) is in place.
   - `--local-state` opts out (experiments only; refused when `CI=true` unless `--force-local-state`).
-  - The OIDC CI roles get read/write on their own state key only, so CI can run `provision` too.
-- **Commands map**: `provision --diff` → `plan -detailed-exitcode` (rendered as a summary and as JSON with `--json`); `provision` → `plan -out` + `apply <plan>` (asks for confirmation unless `--yes`); `destroy` → `destroy` (needs `--confirm <target>`). After apply, `output -json` is cached to `.sforge/state/<target>.json` (non-secret IDs only) for the deployers.
-- **Drift**: `sforge status <target>` runs `plan -refresh-only` and reports drift.
-- **Escape hatch**: `iac.extraModules` / an `infra/<target>/*.tf` directory is merged into the workspace, so users can add e.g. WAF or logging tweaks without forking.
+  - The OIDC CI roles get read/write on their own state key (and its `.tflock`) only, so CI can read outputs and plan; applying infrastructure changes needs broader credentials.
+- **Commands map**: `provision --diff` → `init` + `plan -detailed-exitcode` (rendered as a summary and as JSON with `--json`); `provision` → `plan -out` + `apply <plan>` (asks for confirmation unless `--yes`; non-interactive runs without `--yes` fail with `SF_CONFIRMATION_REQUIRED`); `destroy` → applies `preDestroyInputs` (AWS: `force_destroy`) then `plan -destroy` + apply (needs `--confirm <target>`). After apply, `output -json` is cached to `.sforge/state/<target>.json` (non-sensitive outputs only) for the deployers; without the cache (CI) the deployers read outputs from the remote state (`targetOutputs`, profile `purpose: 'outputs'` skips lookups that only affect inputs).
+- **Pre-phase**: a profile can name resources applied first with `-target` (AWS: the ACM certificate when DNS is not in Route 53). Their outputs are turned into instructions (the validation CNAMEs), then the full apply waits for validation; `--no-wait` stops after printing them.
+- **Drift**: `sforge status <target>` runs `plan -refresh-only`, reports drift and the active version, and exits 1 on drift.
+- **Errors**: engine diagnostics are parsed from `-json` (or from text for `init`/`output`) into `details.diagnostics`; credential failures become `SF_CLOUD_AUTH`, everything else `SF_IAC_FAILED`. A changed backend configuration gets a hint to `sforge iac init <target> -- -migrate-state`.
+- **Escape hatch**: `.tf`/`.tf.json` files in `infra/<target>/` are copied into the workspace as `infra_*` (a separate `iac.extraModules` option was dropped), so users can add e.g. WAF or logging tweaks without forking. `sforge iac path|init|plan|apply|output|validate|state|show|import|console <target> [-- args]` runs the engine directly (output on stderr under `--json`).
 
-## 8. Provider abstraction (`providers/provider-api`)
+## 8. Provider abstraction (`providers/provider-api`) ✅ (M5)
+Provisioning, status drift and destroy are generic (the IaC layer with the provider's `IacProfile`); a provider adds a deployer for runtime operations:
 ```ts
 interface Provider {
   id: 'aws' | 'azure';
-  provision(target, opts): Promise<ProvisionResult>;     // idempotent
-  status(target): Promise<TargetStatus>;                  // infra + current version + URL
-  deploy(target, buildDir, manifest, opts): Promise<DeployResult>;  // {versionId, url, uploaded, skipped, deleted}
-  listVersions(target): Promise<Version[]>;
-  rollback(target, versionId?): Promise<DeployResult>;
-  preview?(target, prId, buildDir): Promise<DeployResult>;
-  destroyPreview?(target, prId): Promise<void>;
-  destroy(target, { confirm }): Promise<void>;
+  iac: IacProfile;                                   // prepare(target) → workspace spec, state backend, pre-phase
+  createDeployer(context: DeployerContext): Deployer; // context carries the target's infrastructure outputs
+  requiredOutputs: string[];
+}
+interface Deployer {
+  deploy({ buildDir, preview?, invalidate?, dryRun? }): Promise<DeployResult>; // {versionId, url, uploaded, copied, skipped, deleted, pruned, …}
+  versions(): Promise<DeployedVersion[]>;
+  rollback(to?): Promise<RollbackResult>;
+  destroyPreview(id): Promise<PreviewDestroyResult>;
+  current(): Promise<{ url, versionId }>;
 }
 ```
-Shared behavior: manifest diffing, cache-header classes (hashed assets → `public, max-age=31536000, immutable`; HTML/feeds/sitemap → `public, max-age=0, must-revalidate`), content-type mapping, concurrency-limited uploads with retries, and `--dry-run` that prints the plan.
+Shared behavior: manifest diffing (`upload` / server-side `copy` / `unchanged`; dot-paths such as `.sforge/` never published), cache-header classes (hashed assets → `public, max-age=31536000, immutable`; everything else → `public, max-age=0, must-revalidate`), content-type mapping (shared with `@staticforge/server`), security headers from `security`, version ids `<UTC>-<git sha>`, preview ids as DNS labels, concurrency-limited uploads (16; the SDK retries), and `--dry-run`.
 
-## 9. AWS provider (`providers/aws`)
+## 9. AWS provider (`providers/aws`) ✅ (M5)
 **Provisioning** (`sforge provision staging`): HCL module `aws/terraform/modules/site` (provider `hashicorp/aws` ≥ 5.x, plus an aliased `aws.us_east_1` provider for ACM), applied via the IaC layer (§8a). Resources:
 - **S3 bucket**: Block Public Access (all four), `BucketOwnerEnforced`, SSE-S3 (or SSE-KMS option), versioning on, `enforceSSL`, lifecycle rule to expire noncurrent versions and old deploy prefixes beyond `retainVersions`. **No website hosting endpoint.**
-- **CloudFront distribution** with **Origin Access Control** (SigV4) and a bucket policy that allows only `cloudfront.amazonaws.com` with `aws:SourceArn` = this distribution. HTTP→HTTPS redirect, HTTP/2+3, TLS 1.2_2021, compression, `CachingOptimized` for assets, a custom cache policy for HTML, a **Response Headers Policy** (HSTS, CSP from config, X-Content-Type-Options, Referrer-Policy, Permissions-Policy), custom error response 404 → `/404.html`.
-- **CloudFront KeyValueStore + CloudFront Function (viewer-request)**:
-  - Rewrites `/about/` → `/about/index.html` (OAC with the S3 REST origin does not resolve directory indexes).
-  - Prefixes the URI with the **active version** read from KVS (`/v/<versionId>/...`). Deploys and rollbacks become an **atomic KVS key update** that propagates in seconds, with no distribution update and no invalidation of HTML across versions.
-  - For PR previews, maps `Host: pr-<n>.<previewDomain>` → `pr-<n>` version key.
+- **CloudFront distribution** with **Origin Access Control** (SigV4) and a bucket policy that allows only `cloudfront.amazonaws.com` with `aws:SourceArn` = this distribution (`GetObject`, plus `ListBucket` so missing objects are 404, not 403). HTTP→HTTPS redirect, HTTP/2+3, TLS 1.2_2021 with a custom domain (the default certificate forces `TLSv1`), compression, one cache policy that honours the objects' `Cache-Control` (no cookies, headers or query strings in the key), a **Response Headers Policy** (HSTS, CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy from `security`), a second policy with `'wasm-unsafe-eval'` on the search page's path patterns, and custom error responses 403/404 → `/_sforge/errors/404.html` (error-page fetches bypass the router, so the deployer copies the active version's `404.html` there on every deploy and rollback).
+- **CloudFront KeyValueStore + CloudFront Function (viewer-request)** (`modules/site/router.js`, config substituted at provision time):
+  - Maps URLs by rule like `resolveRequest`: `/about/` → `about/index.html` (OAC with the S3 REST origin does not resolve directory indexes), `/about` → 301 `/about/` (or `about.html` with `trailingSlash: never`), dot-segments and malformed paths → 404. A function cannot check S3 for existence, so files that break the rule (section indexes with `never`, extensionless files, `/index`) are stored by the deployer as **route exceptions** `r:<version>:<canonical path>` → `f:<file>` / `r:<location>` / `404` in the KVS. A test runs `router.js` against simulated S3 for every URL of two sample sites and both modes and compares with `resolveRequest` (they differ only in that a nonexistent URL may get a redirect before its 404).
+  - Prefixes the URI with the **active version** read from KVS (`/v/<versionId>/...`). Deploys and rollbacks become an **atomic KVS key update** that propagates in seconds, with no distribution update. The rewritten URI is the cache key, so a new version never hits stale cache and no invalidation is needed.
+  - For PR previews, maps `Host: <id>.<previewDomain>` → KVS key `host:<id>`. Before the first deploy (`active` = `none`) it answers 503; an unknown preview host gets 404.
   - Terraform resources: `aws_cloudfront_key_value_store`, `aws_cloudfront_function` (`cloudfront-js-2.0`, with `key_value_store_associations`). The initial `active` key is seeded with `aws_cloudfrontkeyvaluestore_key` using `lifecycle { ignore_changes = [value] }`, so later deploys (SDK `PutKey`) never cause drift.
-- **Optional custom domain**: ACM certificate in **us-east-1** (aliased provider), DNS validation (`aws_acm_certificate_validation`). When `hostedZone` is set, Route 53 alias A/AAAA records are added (plus a wildcard `*.preview.<domain>` for PR previews). Otherwise the required CNAMEs are printed and provisioning waits/polls for validation (`--no-wait` option).
-- Optional access logs bucket (`logging: true`) and optional WAF web ACL ARN attachment.
-- **GitHub OIDC deploy role** (target key `ci: { repo: 'org/repo', branches: ['main'], environments: [], pullRequests: true }`, shared by both providers): IAM OIDC provider (reused if one exists) plus a least-privilege role (S3 Put/Delete/List on the bucket, `cloudfront-keyvaluestore:PutKey/DescribeKeyValueStore`, `cloudfront:CreateInvalidation` on the distribution). The trust policy is pinned to `repo:org/repo:ref:refs/heads/main` and `environment:` claims.
-- Module outputs (bucket, distributionId, kvsArn, domain, ciRoleArn) are cached in `.sforge/state/<target>.json` (non-secret).
+- **Optional custom domain**: ACM certificate in **us-east-1** (aliased provider, SAN `*.<previewDomain>` for previews), DNS validation (`aws_acm_certificate_validation`, 2h timeout; records keyed by the configured names so plans never depend on unknown values). When `hostedZone` is set, Route 53 validation and alias A/AAAA records are added (plus `*.<previewDomain>`). Otherwise the certificate is created in a pre-phase, the required CNAMEs are printed and the full apply waits for validation (`--no-wait` stops after printing). `previewDomain` without `domain` is a config error.
+- Optional access logs bucket (`logging: true`; legacy standard logs, so that bucket keeps ACLs with the `awslogsdelivery` grant; 90-day expiry) and optional WAF web ACL ARN attachment.
+- **GitHub OIDC deploy role** (target key `ci: { repo: 'org/repo', branches: ['main'], environments: [], pullRequests: true }`, shared by both providers): the account's IAM OIDC provider is reused if one exists, unless it is tagged `sforge:owner = <project>-<target>` (created by this target, so kept under management); otherwise it is created and tagged. A least-privilege role: S3 Get/Put/Delete/List on the bucket, `cloudfront-keyvaluestore:` Describe/Get/List/Put/Delete/UpdateKeys on the store, `cloudfront:CreateInvalidation/GetInvalidation/GetDistribution` on the distribution, and read/write on its own state key and lock file. The trust policy requires `aud = sts.amazonaws.com` and `sub` in `repo:o/r:ref:refs/heads/<branch>`, `repo:o/r:environment:<env>` and (with `pullRequests`) `repo:o/r:pull_request`.
+- Module outputs (bucket, region, distribution id/ARN/domain, KVS ARN, URL, preview domain, trailing slash, certificate, validation and DNS records, CI role, OIDC provider) are cached in `.sforge/state/<target>.json` (non-secret).
 - Bucket objects under `v/` are **not** managed by Terraform. The lifecycle rule and the deployer manage them, and `force_destroy` is only set during `sforge destroy`.
 
-**Deploy** (`sforge deploy staging`):
-1. `versionId = <utc-timestamp>-<gitShortSha>`.
-2. Upload `dist/` to `s3://bucket/v/<versionId>/`. Hashed assets that already exist in the previous version are copied server-side with `CopyObject` instead of re-uploaded.
-3. Run a smoke check: fetch `/v/<versionId>/index.html` via S3 HEAD (and optionally a CloudFront canary through a preview host).
-4. `PutKey active=<versionId>` in KVS → live.
-5. Record the version in `s3://bucket/_sforge/versions.json`. Prune versions beyond `retainVersions`.
-6. Invalidation is normally unnecessary (paths are versioned at the origin, but cache keys are viewer URIs). **So:** HTML has max-age=0/must-revalidate and short CloudFront TTL. An optional `--invalidate` issues `/*` invalidation for strictness.
+**Deploy** (`sforge deploy staging`; builds into `build.outDir` and runs the checker first unless `--no-build`/`--no-check`, refusing with `SF_CHECK_FAILED` at or above `check.failOn`):
+1. `versionId = <utc-timestamp>-<gitShortSha>` (`GITHUB_SHA` in Actions), e.g. `20261024T173405Z-6ffcbe4`.
+2. Upload `dist/` to `s3://bucket/v/<versionId>/` with content type, cache class and `ChecksumSHA256` from the manifest. *Every* file identical to the previous version (same hash and cache class, per `_sforge/manifests/<id>.json`) is copied server-side with `CopyObject` instead of re-uploaded.
+3. Write the version's manifest and its route exceptions (KVS `UpdateKeys`, batches of 50 with `IfMatch`).
+4. Smoke check: S3 `HEAD` of `v/<versionId>/index.html`. (A CloudFront canary through a preview host is not done.)
+5. Copy the version's `404.html` to `_sforge/errors/404.html`, then set `active=<versionId>` in the KVS → live.
+6. Record the version in `s3://bucket/_sforge/versions.json`, written with `If-Match`/`If-None-Match` so a concurrent deploy fails (`SF_DEPLOY_FAILED`) instead of losing history. Prune production versions beyond `retainVersions` (objects, manifest and route keys); the S3 lifecycle rule only expires noncurrent object versions and incomplete uploads.
+7. Invalidation is unnecessary, because the cache key is the rewritten, versioned URI. `--invalidate` issues a `/*` invalidation anyway.
 
-**Rollback**: `sforge rollback staging [--to <versionId>]` sets the KVS key back. `sforge versions staging` lists versions.
-**Previews**: `sforge deploy staging --preview pr-42` uploads to `v/pr-42/` and sets KVS `host:pr-42.preview.example.com`. This needs a custom domain; without one, AWS previews are not available and the command errors with an explanation. `sforge preview-destroy staging pr-42`.
+**Rollback**: `sforge rollback staging [--to <versionId>] [--yes]` republishes that version's 404 page and sets the KVS key back. `sforge versions staging` lists versions (newest first, active marked) and previews.
+**Previews**: `sforge deploy staging --preview pr-42` builds with `baseUrl` `https://pr-42.<previewDomain>`, uploads to `v/pr-42/` in place (unchanged files skipped, removed files deleted, stale route keys removed) and sets KVS `host:pr-42 = pr-42`. This needs `domain` + `previewDomain`; without them AWS previews are not available and the command fails with `SF_UNSUPPORTED` and an explanation. `sforge preview-destroy staging pr-42`. Previews share production's 404 page.
 
-## 10. Azure provider (`providers/azure`)
+## 10. Azure provider (`providers/azure`) (M6)
 **Provisioning**: HCL module `azure/terraform/modules/site` (`hashicorp/azurerm` 4.x): `azurerm_resource_group` (optional/existing), `azurerm_static_web_app` (Free/Standard, no repo linkage, `preview_environments_enabled`), `azurerm_static_web_app_custom_domain` (cname-delegation or dns-txt-token validation; outputs the validation record to print). An optional `azurerm_dns_cname_record` is added if an Azure DNS zone is given. Writes a generated **`staticwebapp.config.json`** into the build: `navigationFallback` off, `responseOverrides` 404 → `/404.html`, `globalHeaders` (same security headers as AWS), route-level cache headers matching the cache classes, `trailingSlash` setting.
 **CI identity**: module `ci-oidc` (`hashicorp/azuread` + `azurerm`): `azuread_application` + service principal + `azuread_application_federated_identity_credential` for `repo:org/repo:environment:<env>` (and `pull_request`), `azurerm_role_assignment` scoped to the SWA resource and the state container. The module is skipped with a clear message (plus the equivalent `az` commands) if the caller lacks Graph permissions, or when the target has no `ci` block.
 **Deploy**: fetch the deployment token (`listStaticSiteSecrets`) at runtime using the OIDC/Azure credential (never stored), then upload `dist/` via the SWA deployment client (`@azure/static-web-apps-cli` `deploy` with `--app-location dist --env production`, skip-build).
@@ -230,13 +239,13 @@ sforge build [--drafts] [--out dist] [--base-url] [--json]
 sforge dev [--port] [--open] [--host [addr]] [--drafts]
 sforge preview [--port] [--open] [--host [addr]] [--dir]               # serve dist/
 sforge check [--fix] [--dry-run] [--headless|--no-headless] [--pages glob] [--format pretty|json|sarif|junit]
-sforge provision <target> [--diff] [--bootstrap-state] [--local-state] [--no-wait] [--yes]
-sforge iac path|init|plan|apply|output <target>                      # low-level access to the generated tofu/terraform workspace
-sforge deploy <target> [--preview <id>] [--no-build] [--no-check] [--invalidate] [--dry-run] [--yes]
+sforge provision <target> [--diff] [--bootstrap-state] [--local-state [--force-local-state]] [--no-wait] [--yes]
+sforge iac path|init|plan|apply|output|validate|state|show|import|console <target> [-- args]  # low-level access to the generated workspace
+sforge deploy <target> [--preview <id>] [--no-build] [--no-check] [--headless|--no-headless] [--invalidate] [--dry-run]
 sforge versions <target>
 sforge rollback <target> [--to <versionId|gitSha>] [--yes]
 sforge preview-destroy <target> <id>
-sforge status <target>
+sforge status <target>                                                 # URL, active version, drift (exit 1 on drift)
 sforge destroy <target> --confirm <target-name>
 sforge ci init [--targets staging,prod]                              # emit GitHub Actions workflows
 sforge theme list|validate <path>
@@ -258,7 +267,7 @@ Generates `.github/workflows/`:
 
 ## 14. Security and quality
 - No secrets in config or state files. Credentials come from standard SDK chains (AWS profile/SSO/OIDC; `DefaultAzureCredential`).
-- The CSP defaults to `script-src 'self'`. Inline scripts emitted by the theme use hashes computed at build time and added to the CSP.
+- The CSP (`security.contentSecurityPolicy`) defaults to `default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'` (Shiki's inline styles) plus https images/media/frames, `object-src 'none'`, `frame-ancestors 'self'`; the search page adds `'wasm-unsafe-eval'` (Pagefind). The default theme emits no inline scripts; if it ever does, their hashes must be computed at build time and added to the CSP.
 - Path traversal guarded in the dev server and in output writes. Content is sanitized only for user-flagged untrusted HTML (opt-in `rehype-sanitize`), since authors own their content.
 - Tests: unit tests per package; golden-output snapshots for `examples/basic-site`; checker rule fixtures (bad/good/fixed HTML trios); AWS deployer against `aws-sdk-client-mock`; HCL modules checked with `tofu validate`, `tflint`, `checkov`, and `tofu test` (mock providers) asserting bucket BPA on, no website config, OAC present, bucket policy SourceArn = distribution, TLS-only, HTTPS redirect; the IaC runner unit-tested with a fake engine binary that emits recorded `-json` streams; Azure deployer with mocked clients; e2e Playwright against `sforge preview`; an optional live integration job (manual) that provisions → deploys → curls → rolls back → destroys in a sandbox account/subscription.
 
@@ -269,9 +278,9 @@ Generates `.github/workflows/`:
 3. **M2 Preview** ✅: `dev` (watch + SSE live reload + CSS hot-swap + problems overlay) and `preview`, production-equivalent request resolution, per-run isolated test temp dirs.
 4. **M3 Checker** ✅: `@staticforge/checker` (source/output/rendered layers with de-duplication, html-validate, axe-core via playwright-core in light/dark/mobile), source autofixes with `--dry-run` diffs, pretty/json/sarif/junit reporters, `sforge check`, `schema diagnostics`, checker results in the dev overlay, `@staticforge/server` split out, GFM task-list labels, Node floor raised to 22.22/24.8, Vitest resolving workspace packages to sources (`ssr.resolve.conditions`; tests previously loaded sibling packages' `dist/`), Chromium installed in CI.
 5. **M4 Site features + assets** ✅: `@staticforge/assets` (sharp, esbuild, lightningcss, Pagefind), collections with pagination and RSS/Atom feeds, tags, breadcrumbs, sitemap/robots, responsive images with a persistent cache, bundled/minified/fingerprinted CSS and JS, HTML minification, Pagefind search with the theme's own search page (tested in Chromium), manifest cache classes, `images.optimize`/`images.sizes` and front-matter `order`/`sitemap`, the example site's blog collection.
-6. **M5a IaC layer**: engine resolver/downloader (tofu default, terraform optional), workspace generator, runner with `-json` parsing, state bootstrap modules (S3 native lock / Azure blob), `provision --diff`, `status` drift, `iac` passthrough.
-7. **M5b AWS**: HCL modules (S3 + OAC + CloudFront + KVS function + headers + optional ACM/Route 53 + OIDC role), SDK deployer, versions/rollback, previews.
-8. **M6 Azure**: HCL modules (SWA + custom domain + azuread OIDC), `staticwebapp.config.json` generation, SDK deploy, preview envs, rollback-by-rebuild.
+6. **M5a IaC layer** ✅: `@staticforge/iac` (engine resolver and verified OpenTofu download, workspace generator with `infra/<target>/` merging and vendoring, runner with `-json` parsing, plan/drift summaries, state bootstrap with migration, targeted pre-phase, outputs cache), `provision [--diff]`, `status` (drift, exit 1), `destroy`, `iac` passthrough, `@staticforge/provider-api`, the AWS state-bootstrap module, config `iac.name`, `targets.<n>.state`, `security`, new error codes (`SF_ENGINE_MISSING`, `SF_IAC_FAILED`, `SF_STATE_MISSING`, `SF_NOT_PROVISIONED`, `SF_CLOUD_AUTH`, `SF_CONFIRMATION_REQUIRED`, `SF_ABORTED`, `SF_UNSUPPORTED`, `SF_CHECK_FAILED`, `SF_DEPLOY_FAILED`, `SF_VERSION_NOT_FOUND`), tests with a fake engine binary. The Azure state-bootstrap module moved to M6 with the Azure profile.
+7. **M5b AWS** ✅: `@staticforge/aws` (`modules/site`: private S3 + OAC + CloudFront + KVS router function with route exceptions + security headers + optional ACM/Route 53/previews + logs + WAF + OIDC role; `tofu test` suites), IaC profile (STS, state bucket check, OIDC provider reuse), SDK deployer (diffed uploads with server-side copies, checksums, conditional versions document, pruning), `deploy` (build + check first), `versions`, `rollback`, PR previews and `preview-destroy`, `docs/deploy.md`, a CI job for the HCL modules. Not verified against a real AWS account yet (planned live job, M8).
+8. **M6 Azure**: Azure state-bootstrap module and IaC profile, HCL modules (SWA + custom domain + azuread OIDC), `staticwebapp.config.json` generation (headers from `provider-api`), SDK deploy, preview envs, rollback-by-rebuild.
 9. **M7 CI/CD + MCP**: `ci init` workflows, MCP server, JSON schemas, docs.
 10. **M8 Hardening**: live integration tests, performance (parallel rendering via worker threads; incremental dev rebuilds and checking only affected pages), a browser test of the live-reload client, docs site built *with* sforge (dogfooding), npm publish.
 

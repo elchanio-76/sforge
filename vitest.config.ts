@@ -5,7 +5,7 @@ export default defineConfig({
   resolve: { conditions: ['source'] },
   ssr: { resolve: { conditions: ['source'] } },
   test: {
-    include: ['packages/*/test/**/*.test.ts'],
+    include: ['packages/*/test/**/*.test.ts', 'packages/providers/*/test/**/*.test.ts'],
     globalSetup: ['./vitest.global-setup.ts'],
   },
 });

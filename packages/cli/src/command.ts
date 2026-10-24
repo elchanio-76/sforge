@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { ExitCode, ErrorCode, toSforgeError } from '@staticforge/core';
+import type { Provider } from '@staticforge/provider-api';
 import { type CommandContext, createContext } from './context.js';
 import type { Io } from './io.js';
 import { type Envelope, OUTPUT_SCHEMA_VERSION } from './output.js';
@@ -8,6 +9,8 @@ import { type Envelope, OUTPUT_SCHEMA_VERSION } from './output.js';
 export interface Runtime {
   io: Io;
   exitCode: ExitCode;
+  /** Cloud providers to use instead of the real ones (tests). */
+  providers?: Partial<Record<Provider['id'], Provider>>;
 }
 
 export interface CommandResult<T> {

@@ -50,6 +50,26 @@ const awsTargetSchema = z.strictObject({
   retainVersions: z.int().min(1).max(100).default(10),
   logging: z.boolean().default(false).describe('Enable CloudFront standard access logs.'),
   wafWebAclArn: z.string().startsWith('arn:aws:wafv2:').optional(),
+  state: z
+    .strictObject({
+      bucket: z
+        .string()
+        .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'must be an S3 bucket name')
+        .optional()
+        .describe('State bucket. Defaults to "sforge-state-<accountId>-<region>".'),
+      region: z
+        .string()
+        .regex(/^[a-z]{2}(-[a-z]+)+-\d$/, 'must be an AWS region such as "eu-central-1"')
+        .optional()
+        .describe("Region of the state bucket. Defaults to the target's region."),
+      kmsKeyArn: z
+        .string()
+        .startsWith('arn:aws:kms:')
+        .optional()
+        .describe('Encrypt state with this KMS key instead of SSE-S3.'),
+    })
+    .prefault({})
+    .describe('Remote state backend (S3 with native locking), created by --bootstrap-state.'),
   ci: ciSchema.optional(),
 });
 
@@ -67,8 +87,39 @@ const azureTargetSchema = z.strictObject({
     .string()
     .optional()
     .describe('Azure DNS zone resource ID for automatic CNAME records.'),
+  state: z
+    .strictObject({
+      resourceGroup: z.string().min(1).max(90).optional().describe('Defaults to "sforge-state".'),
+      storageAccount: z
+        .string()
+        .regex(/^[a-z0-9]{3,24}$/, 'must be 3-24 lowercase letters and digits')
+        .optional()
+        .describe('Defaults to "sfstate" + a hash of the subscription ID.'),
+      container: z.string().min(3).max(63).default('tfstate'),
+    })
+    .prefault({})
+    .describe('Remote state backend (Azure Blob Storage), created by --bootstrap-state.'),
   ci: ciSchema.optional(),
 });
+
+/**
+ * Default Content-Security-Policy: everything from the site itself, images,
+ * media and frames also over https, inline style attributes (code highlighting).
+ */
+export const DEFAULT_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "style-src-attr 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "media-src 'self' https:",
+  "frame-src 'self' https:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+  'upgrade-insecure-requests',
+].join('; ');
 
 export const targetSchema = z.discriminatedUnion('provider', [awsTargetSchema, azureTargetSchema]);
 
@@ -169,8 +220,58 @@ export const configSchema = z
         headless: z.boolean().default(true).describe('Run rendered (axe-core + Chromium) checks.'),
       })
       .prefault({}),
+    security: z
+      .strictObject({
+        contentSecurityPolicy: z
+          .union([z.string().min(1), z.literal(false)])
+          .default(DEFAULT_CSP)
+          .describe(
+            "Content-Security-Policy of every page; false sends none. The search page also gets 'wasm-unsafe-eval' (Pagefind).",
+          ),
+        hsts: z
+          .union([
+            z.strictObject({
+              maxAge: z.int().min(0).default(63072000),
+              includeSubDomains: z.boolean().default(false),
+              preload: z.boolean().default(false),
+            }),
+            z.literal(false),
+          ])
+          .prefault({})
+          .describe('Strict-Transport-Security; false sends none.'),
+        referrerPolicy: z
+          .enum([
+            'no-referrer',
+            'no-referrer-when-downgrade',
+            'origin',
+            'origin-when-cross-origin',
+            'same-origin',
+            'strict-origin',
+            'strict-origin-when-cross-origin',
+            'unsafe-url',
+          ])
+          .default('strict-origin-when-cross-origin'),
+        frameOptions: z
+          .union([z.enum(['DENY', 'SAMEORIGIN']), z.literal(false)])
+          .default('SAMEORIGIN'),
+        permissionsPolicy: z
+          .union([z.string().min(1), z.literal(false)])
+          .default('camera=(), microphone=(), geolocation=(), payment=(), usb=()'),
+      })
+      .prefault({})
+      .describe('Security headers sent by the hosting providers.'),
     iac: z
       .strictObject({
+        name: z
+          .string()
+          .regex(
+            /^[a-z][a-z0-9-]{0,39}$/,
+            'must be lowercase letters, digits or "-", starting with a letter',
+          )
+          .optional()
+          .describe(
+            'Project name used in state keys and cloud resource names. Defaults to the host of site.baseUrl.',
+          ),
         engine: z.enum(['tofu', 'terraform']).default('tofu'),
         version: z.string().optional().describe('Override the pinned engine version.'),
         vendor: z

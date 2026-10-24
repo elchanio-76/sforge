@@ -1,0 +1,40 @@
+{
+  "name": "@staticforge/aws",
+  "version": "0.0.0",
+  "description": "AWS provider for staticforge: private S3 + CloudFront (OAC), KeyValueStore versions, previews",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "terraform/**/*.tf",
+    "terraform/**/*.js",
+    "terraform/**/*.hcl",
+    "!terraform/**/.terraform.lock.hcl"
+  ],
+  "engines": {
+    "node": "^22.22.0 || >=24.8.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudfront": "^3.1138.0",
+    "@aws-sdk/client-cloudfront-keyvaluestore": "^3.1138.0",
+    "@aws-sdk/client-iam": "^3.1138.0",
+    "@aws-sdk/client-s3": "^3.1138.0",
+    "@aws-sdk/client-sts": "^3.1138.0",
+    "@aws-sdk/signature-v4a": "^3.1138.0",
+    "@staticforge/core": "workspace:*",
+    "@staticforge/iac": "workspace:*",
+    "@staticforge/provider-api": "workspace:*",
+    "@staticforge/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@smithy/util-stream": "^4.8.2",
+    "aws-sdk-client-mock": "^4.1.0"
+  }
+}

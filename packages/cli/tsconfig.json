@@ -18,6 +18,15 @@
     },
     {
       "path": "../dev-server"
+    },
+    {
+      "path": "../providers/iac"
+    },
+    {
+      "path": "../providers/provider-api"
+    },
+    {
+      "path": "../providers/aws"
     }
   ]
 }

@@ -4,10 +4,13 @@ import type { Runtime } from './command.js';
 import { registerBuildCommand } from './commands/build.js';
 import { registerCheckCommand } from './commands/check.js';
 import { registerConfigCommands } from './commands/config.js';
+import { registerDeployCommands } from './commands/deploy.js';
 import { registerDevCommand } from './commands/dev.js';
+import { registerIacCommand } from './commands/iac.js';
 import { registerInitCommand } from './commands/init.js';
 import { registerNewCommand } from './commands/new.js';
 import { registerPreviewCommand } from './commands/preview.js';
+import { registerProvisionCommands } from './commands/provision.js';
 import { registerSchemaCommand } from './commands/schema.js';
 import { registerVersionCommand } from './commands/version.js';
 import { type Io, processIo } from './io.js';
@@ -43,6 +46,9 @@ export function createProgram(runtime: Runtime): Command {
   registerCheckCommand(program, runtime);
   registerDevCommand(program, runtime);
   registerPreviewCommand(program, runtime);
+  registerProvisionCommands(program, runtime);
+  registerIacCommand(program, runtime);
+  registerDeployCommands(program, runtime);
   registerConfigCommands(program, runtime);
   registerSchemaCommand(program, runtime);
   registerVersionCommand(program, runtime);
@@ -51,8 +57,12 @@ export function createProgram(runtime: Runtime): Command {
 }
 
 /** Run the CLI and return the process exit code. */
-export async function run(argv: string[], io: Io = processIo()): Promise<ExitCode> {
-  const runtime: Runtime = { io, exitCode: ExitCode.Ok };
+export async function run(
+  argv: string[],
+  io: Io = processIo(),
+  providers?: Runtime['providers'],
+): Promise<ExitCode> {
+  const runtime: Runtime = { io, exitCode: ExitCode.Ok, ...(providers && { providers }) };
   const program = createProgram(runtime);
 
   try {
