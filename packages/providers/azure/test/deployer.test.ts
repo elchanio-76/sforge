@@ -368,6 +368,21 @@ describe('Azure versions, rollback and previews', () => {
     expect(azure.deletedBuilds).toEqual(['pr9']);
   });
 
+  it('waits until Azure has removed the preview environment', async () => {
+    const { azure, deployer } = setup();
+    await deployer.deploy({ buildDir: writeBuild(site), preview: 'pr-3' });
+    azure.deleteLag = 3;
+    await deployer.destroyPreview('pr-3');
+    expect(azure.builds.map((b) => b.buildId)).not.toContain('pr3');
+
+    await deployer.deploy({ buildDir: writeBuild(site), preview: 'pr-4' });
+    azure.deleteLag = 1_000_000;
+    await expect(deployer.destroyPreview('pr-4')).rejects.toMatchObject({
+      code: ErrorCode.DeployFailed,
+      message: expect.stringContaining('still being removed'),
+    });
+  });
+
   it('reports the production URL and active version', async () => {
     const { deployer } = await deployed(2);
     expect(await deployer.current()).toEqual({

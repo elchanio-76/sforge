@@ -169,6 +169,21 @@ export function createAzureDeployer(
     }
   }
 
+  async function waitUntilGone(sites: StaticSites, environment: string, previewId: string) {
+    const timeout = options.readyTimeoutMs ?? READY_TIMEOUT_MS;
+    const deadline = Date.now() + timeout;
+    while ((await builds(sites)).some((b) => b.buildId === environment)) {
+      if (Date.now() > deadline) {
+        throw new SforgeError(
+          ErrorCode.DeployFailed,
+          `The preview ${previewId} is still being removed after ${Math.round(timeout / 1000)}s`,
+          { hint: 'It may still finish: check `sforge versions`, or the Azure portal.' },
+        );
+      }
+      await sleep(options.pollIntervalMs ?? READY_POLL_MS);
+    }
+  }
+
   async function deploymentToken(sites: StaticSites): Promise<string> {
     try {
       const secrets = await sites.listStaticSiteSecrets(resourceGroup(), appName());
@@ -435,11 +450,13 @@ export function createAzureDeployer(
       const exists = (await builds(sites)).some((b) => b.buildId === environment);
       if (exists) {
         try {
-          const poller = sites.deleteStaticSiteBuild(resourceGroup(), appName(), environment);
-          await poller.pollUntilDone();
+          // Only send the request: the SDK's poller reads the operation status at
+          // subscription scope, which the CI identity (roles on the app only) cannot.
+          await sites.deleteStaticSiteBuild(resourceGroup(), appName(), environment).submitted();
         } catch (error) {
           throw azureError(error, `Could not remove the preview ${previewId}`);
         }
+        await waitUntilGone(sites, environment, previewId);
       }
       return { target: context.targetName, previewId, deleted: 0, existed: exists };
     },

@@ -37,6 +37,8 @@ export interface FakeAzure {
   history: { doc: HistoryDoc | undefined; etag: number; writes: number; conflicts: number };
   tokenCalls: number;
   deletedBuilds: string[];
+  /** Listings a deleted environment still shows up in (Azure removes it in the background). */
+  deleteLag: number;
   secretCalls: number;
   /** Storage resources that exist: `account` and `container` (set undefined for missing). */
   storage: { account: boolean; container: boolean; error?: unknown };
@@ -52,6 +54,7 @@ export function fakeAzure(): FakeAzure {
     history: { doc: undefined, etag: 0, writes: 0, conflicts: 0 },
     tokenCalls: 0,
     deletedBuilds: [],
+    deleteLag: 0,
     secretCalls: 0,
     storage: { account: true, container: true },
     signIn: {},
@@ -81,6 +84,8 @@ export function fakeAzure(): FakeAzure {
 
   const notFound = () => Object.assign(new Error('not found'), { statusCode: 404 });
 
+  // Deleted environments, with the number of listings they still show up in.
+  const removing: Record<string, number> = {};
   state.clients = {
     credential: () => ({
       async getToken() {
@@ -98,6 +103,12 @@ export function fakeAzure(): FakeAzure {
             return { properties: { apiKey: 'SECRET-DEPLOYMENT-TOKEN' } };
           },
           listStaticSiteBuilds() {
+            for (const id of Object.keys(removing)) {
+              if (removing[id]-- === 0) {
+                state.builds = state.builds.filter((b) => b.buildId !== id);
+                delete removing[id];
+              }
+            }
             const snapshot = [...state.builds];
             return (async function* () {
               yield* snapshot;
@@ -105,9 +116,14 @@ export function fakeAzure(): FakeAzure {
           },
           deleteStaticSiteBuild(_group: string, _name: string, id: string) {
             return {
-              async pollUntilDone() {
+              async submitted() {
                 state.deletedBuilds.push(id);
-                state.builds = state.builds.filter((b) => b.buildId !== id);
+                removing[id] = state.deleteLag;
+              },
+              async pollUntilDone() {
+                throw new Error(
+                  'polling needs Microsoft.Web/locations/*/read at subscription scope',
+                );
               },
             };
           },
