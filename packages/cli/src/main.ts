@@ -81,7 +81,14 @@ export async function run(
       schemaVersion: OUTPUT_SCHEMA_VERSION,
       command: '',
       ok: false,
-      error: { code: ErrorCode.Usage, message: error.message.replace(/^error: /, '') },
+      error: {
+        code: ErrorCode.Usage,
+        // A command group without a subcommand prints its help and fails with "(outputHelp)".
+        message:
+          error.code === 'commander.help'
+            ? 'Missing subcommand; --help lists them'
+            : error.message.replace(/^error: /, ''),
+      },
     };
     runtime.onResult?.({ envelope });
     if (argv.includes('--json')) io.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);

@@ -12,6 +12,7 @@ import {
   type IacSpec,
   type PreparedTarget,
   type ProfileInput,
+  githubSubjectPrefix,
   iacRef,
   prepareDns,
   projectName,
@@ -178,6 +179,10 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
 
       const oidc =
         target.ci === undefined || outputsOnly ? undefined : await chooseOidcProvider(clients, id);
+      const subjectPrefix =
+        target.ci === undefined
+          ? undefined
+          : await githubSubjectPrefix(target.ci, { env: input.env, purpose: input.purpose });
       const headers = securityHeaders(input.config);
       const tags = { 'sforge:managed-by': 'staticforge' };
       const inputs: Record<string, unknown> = {
@@ -206,6 +211,7 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
             ? null
             : {
                 repo: target.ci.repo,
+                subject_prefix: subjectPrefix,
                 branches: target.ci.branches,
                 environments: target.ci.environments,
                 pull_requests: target.ci.pullRequests,

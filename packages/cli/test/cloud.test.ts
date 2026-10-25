@@ -92,7 +92,7 @@ function fakeProvider(options: { stateExists?: boolean } = {}) {
         requiredProviders: {},
         providers: {},
         module: { name: 'site', dir: module, inputs: { name: 'x' } },
-        outputs: ['bucket', 'url'],
+        outputs: ['bucket', 'url', 'dns_records'],
         backend: { type: 's3' as const, config: { bucket: 'state', key: 'k' } },
       };
       return {
@@ -250,6 +250,30 @@ describe('sforge provision', () => {
       ok: true,
       data: { applied: true, outputs: { bucket: 'site-bucket' } },
     });
+  });
+
+  it('lists the DNS records to create unless sforge manages the zone', async () => {
+    const records = [{ name: 'www.example.com', type: 'CNAME', value: 'd111.cloudfront.net' }];
+    const script = {
+      plan: planCreates('module.site.aws_s3_bucket.site'),
+      apply: applyCreates('module.site.aws_s3_bucket.site'),
+      output: {
+        stdout: [JSON.stringify({ ...outputs, dns_records: { value: records, sensitive: false } })],
+      },
+    };
+    const provision = async (target: Record<string, unknown>) => {
+      const { env } = engineEnv(script);
+      const cwd = project({ staging: { provider: 'aws', region: 'eu-central-1', ...target } });
+      const providers = { aws: fakeProvider().provider };
+      return sforge(['provision', 'staging', '--yes'], { cwd, env, providers });
+    };
+    const manual = await provision({ domain: 'www.example.com' });
+    expect(manual.stdout).toContain(
+      'Create these DNS records for the site:\n  www.example.com CNAME d111.cloudfront.net',
+    );
+    const route53 = await provision({ domain: 'www.example.com', hostedZone: 'example.com' });
+    expect(route53.exitCode).toBe(0);
+    expect(route53.stdout).not.toContain('DNS records');
   });
 
   it('explains a missing state backend', async () => {

@@ -166,6 +166,16 @@ describe('sforge CLI', () => {
     expect(result.stderr).toContain("unknown command 'nope'");
   });
 
+  it('reports a command group without its subcommand as a usage error', async () => {
+    const result = await sforge(['config', '--json']);
+    expect(result.exitCode).toBe(2);
+    expect(JSON.parse(result.stdout).error).toEqual({
+      code: 'SF_USAGE',
+      message: 'Missing subcommand; --help lists them',
+    });
+    expect(result.stderr).toContain('Usage: sforge config');
+  });
+
   it('rejects unknown schema names', async () => {
     const result = await sforge(['schema', 'nope']);
     expect(result.exitCode).toBe(2);

@@ -95,6 +95,7 @@ variable "ci" {
   description = "GitHub Actions OIDC deploy role. Null creates none."
   type = object({
     repo                 = string
+    subject_prefix       = string # repo:owner/repo, or repo:owner@<id>/repo@<id> (immutable subjects)
     branches             = list(string)
     environments         = list(string)
     pull_requests        = bool

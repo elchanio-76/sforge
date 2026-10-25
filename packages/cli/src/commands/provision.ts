@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { ErrorCode, SforgeError } from '@staticforge/core';
+import { ErrorCode, SforgeError, type TargetConfig } from '@staticforge/core';
 import type { ProvisionResult } from '@staticforge/iac';
 import { type Runtime, action } from '../command.js';
 import { confirmer, formatPlan, targetContext, truthy } from '../cloud.js';
@@ -22,7 +22,7 @@ export function localStateFrom(flags: StateFlags, env: NodeJS.ProcessEnv): boole
   return true;
 }
 
-function describe(result: ProvisionResult, cwd: string): string {
+function describe(result: ProvisionResult, target: TargetConfig, cwd: string): string {
   const lines: string[] = [];
   if (result.bootstrap) {
     lines.push(
@@ -43,8 +43,10 @@ function describe(result: ProvisionResult, cwd: string): string {
   const outputs = result.outputs ?? {};
   if (typeof outputs.url === 'string') lines.push(`URL: ${outputs.url}`);
   const dns = outputs.dns_records as { name: string; type: string; value: string }[] | undefined;
-  if (dns && dns.length > 0 && result.applied) {
-    lines.push('Point your DNS at CloudFront (skip if Route 53 manages the zone):');
+  // Records in Route 53 or a dns provider are created by the apply itself.
+  const managed = target.dns !== undefined || (target.provider === 'aws' && target.hostedZone);
+  if (dns && dns.length > 0 && result.applied && !managed) {
+    lines.push('Create these DNS records for the site:');
     lines.push(...dns.map((r) => `  ${r.name} ${r.type} ${r.value}`));
   }
   if (typeof outputs.ci_role_arn === 'string') lines.push(`CI deploy role: ${outputs.ci_role_arn}`);
@@ -81,7 +83,7 @@ export function registerProvisionCommands(program: Command, runtime: Runtime): v
           noWait: options.wait === false,
           confirm: confirmer(ctx, options.yes === true),
         });
-        return { data: result, text: describe(result, ctx.cwd) };
+        return { data: result, text: describe(result, target.target, ctx.cwd) };
       }),
     );
 

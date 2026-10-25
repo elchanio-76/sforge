@@ -6,9 +6,9 @@ locals {
   ci        = var.ci
   ci_create = local.ci != null && try(local.ci.create_oidc_provider, false)
   ci_subjects = local.ci == null ? [] : concat(
-    [for branch in local.ci.branches : "repo:${local.ci.repo}:ref:refs/heads/${branch}"],
-    [for environment in local.ci.environments : "repo:${local.ci.repo}:environment:${environment}"],
-    local.ci.pull_requests ? ["repo:${local.ci.repo}:pull_request"] : [],
+    [for branch in local.ci.branches : "${local.ci.subject_prefix}:ref:refs/heads/${branch}"],
+    [for environment in local.ci.environments : "${local.ci.subject_prefix}:environment:${environment}"],
+    local.ci.pull_requests ? ["${local.ci.subject_prefix}:pull_request"] : [],
   )
   oidc_provider_arn = local.ci == null ? null : (
     local.ci_create ? aws_iam_openid_connect_provider.github[0].arn : local.ci.oidc_provider_arn

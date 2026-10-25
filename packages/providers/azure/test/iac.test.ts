@@ -263,7 +263,7 @@ describe('Azure IaC profile', () => {
 
   it('adds the GitHub Actions identity with access to its own state only', async () => {
     const { profile, request } = input(fakeAzure(), {
-      ci: { repo: 'acme/docs', environments: ['production'] },
+      ci: { repo: 'acme/docs', environments: ['production'], subjectPrefix: 'repo:acme@1/docs@2' },
     });
     const { spec } = await profile.prepare(request);
     const location = spec.backend.config;
@@ -277,6 +277,7 @@ describe('Azure IaC profile', () => {
           target: 'prod',
           subscription_id: SUBSCRIPTION,
           repo: 'acme/docs',
+          subject_prefix: 'repo:acme@1/docs@2',
           branches: ['main'],
           environments: ['production'],
           pull_requests: true,

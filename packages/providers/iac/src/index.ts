@@ -1,6 +1,7 @@
 export * from './dns.js';
 export * from './download.js';
 export * from './engine.js';
+export * from './github.js';
 export * from './operations.js';
 export * from './provision.js';
 export * from './runner.js';

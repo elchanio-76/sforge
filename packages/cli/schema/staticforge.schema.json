@@ -523,6 +523,11 @@
                     "default": true,
                     "description": "Allow pull_request workflows to deploy previews.",
                     "type": "boolean"
+                  },
+                  "subjectPrefix": {
+                    "description": "Start of the OIDC tokens' sub claim, e.g. repo:owner@123/repo@456. Defaults to the repository's sub_claim_prefix, read from GitHub when provisioning.",
+                    "type": "string",
+                    "pattern": "^repo:[A-Za-z0-9_.-]+(@\\d+)?\\/[A-Za-z0-9_.-]+(@\\d+)?$"
                   }
                 },
                 "required": [
@@ -677,6 +682,11 @@
                     "default": true,
                     "description": "Allow pull_request workflows to deploy previews.",
                     "type": "boolean"
+                  },
+                  "subjectPrefix": {
+                    "description": "Start of the OIDC tokens' sub claim, e.g. repo:owner@123/repo@456. Defaults to the repository's sub_claim_prefix, read from GitHub when provisioning.",
+                    "type": "string",
+                    "pattern": "^repo:[A-Za-z0-9_.-]+(@\\d+)?\\/[A-Za-z0-9_.-]+(@\\d+)?$"
                   }
                 },
                 "required": [

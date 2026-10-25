@@ -356,6 +356,7 @@ run "ci_role_pinned_to_repo" {
   variables {
     ci = {
       repo                 = "acme/docs"
+      subject_prefix       = "repo:acme@1001/docs@2002"
       branches             = ["main"]
       environments         = ["staging"]
       pull_requests        = true
@@ -367,9 +368,9 @@ run "ci_role_pinned_to_repo" {
 
   assert {
     condition = jsondecode(aws_iam_role.ci[0].assume_role_policy).Statement[0].Condition.StringLike["token.actions.githubusercontent.com:sub"] == [
-      "repo:acme/docs:ref:refs/heads/main",
-      "repo:acme/docs:environment:staging",
-      "repo:acme/docs:pull_request",
+      "repo:acme@1001/docs@2002:ref:refs/heads/main",
+      "repo:acme@1001/docs@2002:environment:staging",
+      "repo:acme@1001/docs@2002:pull_request",
     ]
     error_message = "The trust policy must be pinned to the repository's branches, environments and PRs."
   }
@@ -404,6 +405,7 @@ run "ci_role_reusing_provider_without_state" {
   variables {
     ci = {
       repo                 = "acme/docs"
+      subject_prefix       = "repo:acme/docs"
       branches             = ["main"]
       environments         = []
       pull_requests        = false

@@ -84,7 +84,8 @@ State is kept in the target's own cloud. `--bootstrap-state` creates the backend
   with Block Public Access, versioning, encryption (SSE-S3, or SSE-KMS with `state.kmsKeyArn`)
   and a TLS-only policy. Locking uses S3 native lock files (`use_lockfile`); no DynamoDB table.
   The key is `<project>/<target>.tfstate`, where `<project>` is `iac.name` or the host of
-  `site.baseUrl` (`docs-example-com`).
+  `site.baseUrl` (`docs-example-com`). The project name also prefixes resource names, so set
+  `iac.name` when targets have their own domains; changing it later recreates the resources.
 - The bootstrap module is applied with local state, which is then migrated into the bucket it
   created (`_sforge/state-bootstrap.tfstate`). An existing bucket is never modified, so the
   flag is safe to repeat. sforge never deletes the state bucket.
@@ -242,7 +243,8 @@ targets: {
 `provision` then creates an IAM role that GitHub Actions can assume through OIDC, so no
 long-lived keys are needed. Its ARN is printed and kept in the `ci_role_arn` output. The trust
 policy accepts only that repository's listed branches, environments and (if enabled) pull
-request workflows. The role can write the content bucket, switch versions in the
+request workflows, in the repository's subject format
+([immutable subjects](ci.md#which-workflows-can-deploy) included). The role can write the content bucket, switch versions in the
 KeyValueStore, invalidate the distribution, and read and write this target's own state file.
 It cannot change the infrastructure, so run `provision` with an administrator's credentials.
 The account's GitHub OIDC provider is reused if one exists; otherwise it is created and owned

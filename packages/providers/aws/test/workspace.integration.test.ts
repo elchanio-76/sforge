@@ -52,7 +52,11 @@ describe.runIf(process.env.SFORGE_IAC_TESTS === '1')('generated AWS workspaces',
             domain: 'docs.example.com',
             hostedZone: 'example.com',
             previewDomain: 'preview.example.com',
-            ci: { repo: 'acme/docs', environments: ['staging'] },
+            ci: {
+              repo: 'acme/docs',
+              environments: ['staging'],
+              subjectPrefix: 'repo:acme@1/docs@2',
+            },
           },
           cloudflare: {
             provider: 'aws',

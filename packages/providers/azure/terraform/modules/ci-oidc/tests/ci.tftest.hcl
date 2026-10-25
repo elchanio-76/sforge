@@ -34,6 +34,7 @@ variables {
   target             = "prod"
   subscription_id    = "33333333-3333-3333-3333-333333333333"
   repo               = "acme/docs"
+  subject_prefix     = "repo:acme@1001/docs@2002"
   branches           = ["main", "release/1.x"]
   environments       = ["production"]
   resource_group_id  = "/subscriptions/33333333-3333-3333-3333-333333333333/resourceGroups/docs-prod"
@@ -48,10 +49,10 @@ run "one_federated_login_per_subject" {
 
   assert {
     condition = { for k, c in azuread_application_federated_identity_credential.github : k => c.subject } == {
-      "branch-main"            = "repo:acme/docs:ref:refs/heads/main"
-      "branch-release-1-x"     = "repo:acme/docs:ref:refs/heads/release/1.x"
-      "environment-production" = "repo:acme/docs:environment:production"
-      "pull-request"           = "repo:acme/docs:pull_request"
+      "branch-main"            = "repo:acme@1001/docs@2002:ref:refs/heads/main"
+      "branch-release-1-x"     = "repo:acme@1001/docs@2002:ref:refs/heads/release/1.x"
+      "environment-production" = "repo:acme@1001/docs@2002:environment:production"
+      "pull-request"           = "repo:acme@1001/docs@2002:pull_request"
     }
     error_message = "One federated login per branch, environment and pull requests, with names Entra accepts."
   }

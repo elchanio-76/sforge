@@ -31,6 +31,16 @@ const ciSchema = z.strictObject({
     .boolean()
     .default(true)
     .describe('Allow pull_request workflows to deploy previews.'),
+  subjectPrefix: z
+    .string()
+    .regex(
+      /^repo:[A-Za-z0-9_.-]+(@\d+)?\/[A-Za-z0-9_.-]+(@\d+)?$/,
+      'must be "repo:owner/repo" or "repo:owner@<id>/repo@<id>"',
+    )
+    .optional()
+    .describe(
+      "Start of the OIDC tokens' sub claim, e.g. repo:owner@123/repo@456. Defaults to the repository's sub_claim_prefix, read from GitHub when provisioning.",
+    ),
 });
 
 /** DNS records for the custom domain, managed by sforge in this DNS provider. */

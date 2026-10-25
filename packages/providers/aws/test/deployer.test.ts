@@ -27,7 +27,7 @@ import {
 import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
 import { sdkStreamMixin } from '@smithy/util-stream';
 import { mockClient } from 'aws-sdk-client-mock';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type SforgeConfig, createLogger, validateConfig } from '@staticforge/core';
 import type { Deployer } from '@staticforge/provider-api';
 import {
@@ -207,6 +207,10 @@ function deployer(cfg = config(), out: Record<string, unknown> = outputs): Deplo
     clients,
   );
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   afterGet = undefined;
@@ -487,10 +491,15 @@ describe('AWS IaC profile', () => {
       .on(ListOpenIDConnectProvidersCommand)
       .resolves({ OpenIDConnectProviderList: [{ Arn: arn }] });
     iam.on(ListOpenIDConnectProviderTagsCommand).resolves({ Tags: [] });
+    const github = vi.fn(async () =>
+      Response.json({ use_default: true, sub_claim_prefix: 'repo:acme@1/docs@2' }),
+    );
+    vi.stubGlobal('fetch', github);
     const cfg = config({ ci: { repo: 'acme/docs' } });
     const foreign = await createAwsIacProfile(clients).prepare(input(cfg));
     expect(foreign.spec.module.inputs.ci).toMatchObject({
       repo: 'acme/docs',
+      subject_prefix: 'repo:acme@1/docs@2',
       branches: ['main'],
       create_oidc_provider: false,
       oidc_provider_arn: arn,
@@ -513,6 +522,7 @@ describe('AWS IaC profile', () => {
     expect(outputsOnly.state.exists).toBe(true);
     expect(iam.calls()).toHaveLength(0);
     expect(s3.calls()).toHaveLength(0);
+    expect(github).toHaveBeenCalledTimes(2);
   });
 
   it('creates the certificate first when DNS is not in Route 53', async () => {

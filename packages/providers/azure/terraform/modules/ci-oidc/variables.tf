@@ -18,6 +18,11 @@ variable "repo" {
   type        = string
 }
 
+variable "subject_prefix" {
+  description = "Start of the OIDC tokens' sub claim: repo:owner/repo, or repo:owner@<id>/repo@<id> (immutable subjects)."
+  type        = string
+}
+
 variable "branches" {
   description = "Branches whose workflows may deploy."
   type        = list(string)

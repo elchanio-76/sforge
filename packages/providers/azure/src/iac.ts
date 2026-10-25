@@ -7,6 +7,7 @@ import {
   type IacSpec,
   type PreparedTarget,
   type ProfileInput,
+  githubSubjectPrefix,
   iacRef,
   prepareDns,
   projectName,
@@ -198,7 +199,13 @@ function assertFederatedLimit(ci: CiConfig, name: string): void {
 function withCiIdentity(
   spec: IacSpec,
   ci: CiConfig,
-  site: { project: string; name: string; subscriptionId: string; location: StateLocation },
+  site: {
+    project: string;
+    name: string;
+    subscriptionId: string;
+    location: StateLocation;
+    subjectPrefix: string;
+  },
 ): IacSpec {
   const { location } = site;
   const container =
@@ -219,6 +226,7 @@ function withCiIdentity(
           target: site.name,
           subscription_id: site.subscriptionId,
           repo: ci.repo,
+          subject_prefix: site.subjectPrefix,
           branches: ci.branches,
           environments: ci.environments,
           pull_requests: ci.pullRequests,
@@ -322,7 +330,17 @@ export function createAzureIacProfile(
           ])
         : site;
       if (target.ci !== undefined) {
-        spec = withCiIdentity(spec, target.ci, { project, name, subscriptionId, location });
+        const subjectPrefix = await githubSubjectPrefix(target.ci, {
+          env: input.env,
+          purpose: input.purpose,
+        });
+        spec = withCiIdentity(spec, target.ci, {
+          project,
+          name,
+          subscriptionId,
+          location,
+          subjectPrefix,
+        });
       }
 
       const bootstrap: IacSpec = {

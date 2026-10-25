@@ -8,9 +8,9 @@ locals {
   label = "${var.name}/${var.target}"
   # Federated credential names allow letters, digits, "-" and "_".
   subjects = merge(
-    { for branch in var.branches : substr("branch-${replace(branch, "/[^A-Za-z0-9_-]/", "-")}", 0, 120) => "repo:${var.repo}:ref:refs/heads/${branch}" },
-    { for environment in var.environments : substr("environment-${replace(environment, "/[^A-Za-z0-9_-]/", "-")}", 0, 120) => "repo:${var.repo}:environment:${environment}" },
-    var.pull_requests ? { "pull-request" = "repo:${var.repo}:pull_request" } : {},
+    { for branch in var.branches : substr("branch-${replace(branch, "/[^A-Za-z0-9_-]/", "-")}", 0, 120) => "${var.subject_prefix}:ref:refs/heads/${branch}" },
+    { for environment in var.environments : substr("environment-${replace(environment, "/[^A-Za-z0-9_-]/", "-")}", 0, 120) => "${var.subject_prefix}:environment:${environment}" },
+    var.pull_requests ? { "pull-request" = "${var.subject_prefix}:pull_request" } : {},
   )
   blobs = "Microsoft.Storage/storageAccounts/blobServices/containers/blobs"
 }

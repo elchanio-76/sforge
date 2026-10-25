@@ -91,6 +91,17 @@ A job that names an environment presents the environment subject, not the branch
 either branches or environments for production. On AWS the role's trust policy lists the
 subjects; on Azure each subject is a federated login of the target's Entra application.
 
+Repositories created since July 2026 (and older ones that opted in) use **immutable subjects**,
+which add the owner's and the repository's numeric IDs: `repo:acme@1001/docs@2002:pull_request`.
+A recreated repository with the same name gets new IDs, so it cannot deploy. `sforge provision`
+reads the repository's subject format from GitHub
+(`GET /repos/acme/docs/actions/oidc/customization/sub`) and builds the subjects from it. That
+works without a token for a public repository; for a private one, set `GH_TOKEN` (for example
+`GH_TOKEN=$(gh auth token)`). Alternatively, set the prefix yourself:
+`ci: { repo: 'acme/docs', subjectPrefix: 'repo:acme@1001/docs@2002' }`. If you switch a repository
+to immutable subjects later, run `sforge provision` again. Custom subject templates
+(`use_default: false`) are not supported.
+
 ## Pinned actions
 
 The workflows use each action at a full commit SHA with its version in a comment

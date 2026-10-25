@@ -40,7 +40,11 @@ describe.runIf(process.env.SFORGE_IAC_TESTS === '1')('generated Azure workspaces
       const full = azureConfig({
         domain: 'azure.docs.example.com',
         dns: { provider: 'cloudflare', zone: 'example.com', zoneId: 'a'.repeat(32) },
-        ci: { repo: 'acme/docs', environments: ['production'] },
+        ci: {
+          repo: 'acme/docs',
+          environments: ['production'],
+          subjectPrefix: 'repo:acme@1/docs@2',
+        },
       });
       const withDomain = await createAzureIacProfile(fakeAzure().clients).prepare({
         rootDir,
