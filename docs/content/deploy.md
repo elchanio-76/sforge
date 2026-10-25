@@ -208,8 +208,9 @@ sforge deploy staging --preview pr-42   # → https://pr-42.preview.example.com
 sforge preview-destroy staging pr-42
 ```
 
-A preview gets its own canonical URLs (the build uses the preview URL as `site.baseUrl`) and is
-overwritten in place by later deploys with the same id. Without a custom domain, AWS targets
+A preview gets its own canonical URLs (the build uses the preview URL as `site.baseUrl`), every
+page carries `<meta name="robots" content="noindex">` so that search engines leave previews out,
+and it is overwritten in place by later deploys with the same id. Without a custom domain, AWS targets
 cannot serve previews and `--preview` fails with `SF_UNSUPPORTED`. Previews share production's
 404 page.
 

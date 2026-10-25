@@ -79,6 +79,8 @@ export interface BuildOptions {
   scratchDir?: string;
   /** Site URL for canonical links (overrides site.baseUrl), e.g. for previews. */
   baseUrl?: string;
+  /** Add `<meta name="robots" content="noindex">` to every page (previews). */
+  noindex?: boolean;
   /** Minify HTML, CSS and JS (overrides build.minify). */
   minify?: boolean;
   /**
@@ -668,7 +670,8 @@ async function build(options: BuildOptions, pool: WorkerPool | undefined): Promi
     record(output, contents, immutable);
   };
 
-  const finish = { assetUrl, minify };
+  const noindex = options.noindex ?? false;
+  const finish = { assetUrl, minify, noindex };
   const built: BuiltPage[] = [];
   const indexed: SearchPage[] = [];
   const bodies = new Map<string, string>();
@@ -681,6 +684,7 @@ async function build(options: BuildOptions, pool: WorkerPool | undefined): Promi
     baseUrl,
     assetUrls: code.urls,
     minify,
+    noindex,
     base,
     nav,
     titles,

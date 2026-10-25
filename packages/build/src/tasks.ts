@@ -125,6 +125,7 @@ export interface RenderContextShared {
   /** Fingerprinted URL by asset URL. */
   assetUrls: Map<string, string>;
   minify: boolean;
+  noindex: boolean;
   base: Omit<RenderContext, 'page' | 'content' | 'nav' | 'breadcrumbs'>;
   nav: Omit<NavItem, 'current' | 'active'>[];
   /** Page title by URL, for breadcrumbs. */
@@ -178,6 +179,8 @@ export function renderPages(input: {
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
     }
-    return { html: finishHtml(html, { assetUrl, minify: context.minify }) };
+    return {
+      html: finishHtml(html, { assetUrl, minify: context.minify, noindex: context.noindex }),
+    };
   });
 }

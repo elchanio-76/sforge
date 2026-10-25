@@ -120,6 +120,8 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
             rootDir,
             config,
             ...(baseUrl !== undefined && { baseUrl }),
+            // Previews live on public URLs (and in PR comments): keep them out of search results.
+            ...(preview !== undefined && { noindex: true }),
             generator: `staticforge ${VERSION}`,
             logger: ctx.logger,
             ...(pool && { pool }),

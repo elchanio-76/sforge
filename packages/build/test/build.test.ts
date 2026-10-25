@@ -146,6 +146,25 @@ describe('buildSite', () => {
     );
   });
 
+  it('marks every page noindex in preview builds', async () => {
+    const root = tempProject({
+      ...site,
+      'content/kept.html':
+        '<!doctype html><html><head><title>Kept</title><meta name="robots" content="index, follow"></head><body><h1>Kept</h1></body></html>',
+    });
+    const noindex = '<meta name="robots" content="noindex">';
+    const preview = await buildSite({ rootDir: root, config: config(), noindex: true });
+    // Theme pages, documents with their own <head>, and generated pages alike.
+    for (const file of ['index.html', 'about/index.html', 'legacy/index.html', '404.html']) {
+      expect(read(preview.outDir, file), file).toContain(noindex);
+    }
+    expect(read(preview.outDir, 'kept/index.html')).toContain(noindex);
+    expect(read(preview.outDir, 'kept/index.html')).not.toContain('index, follow');
+
+    const production = await buildSite({ rootDir: root, config: config() });
+    expect(read(production.outDir, 'index.html')).not.toContain('name="robots"');
+  });
+
   it('uses a content 404 page with the 404 layout', async () => {
     const root = tempProject({
       'content/404.md': '---\ntitle: Lost\n---\nTry the [home page](index.md).\n',

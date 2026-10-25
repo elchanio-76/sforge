@@ -561,6 +561,7 @@ describe('sforge deploy, versions and rollback', () => {
     expect(deploys[0]).toMatchObject({ preview: 'pr-1' });
     const home = readFileSync(join(cwd, 'dist', 'index.html'), 'utf8');
     expect(home).toContain('https://app-pr-1.westeurope.azurestaticapps.net/');
+    expect(home).toContain('<meta name="robots" content="noindex">');
   });
 
   it('builds production with the URL of the target’s domain', async () => {
