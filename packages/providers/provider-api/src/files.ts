@@ -103,11 +103,15 @@ export function gitShortSha(dir: string, env: NodeJS.ProcessEnv = process.env): 
   }
 }
 
-/** Whether the working tree of `dir` has uncommitted changes (false outside a git checkout). */
+/**
+ * Whether the working tree of `dir` has uncommitted changes (false outside a git
+ * checkout). `.sforge/` is left out: sforge rewrites its workspaces there on
+ * every run (in CI too), and they never change what is built.
+ */
 export function gitIsDirty(dir: string): boolean {
   try {
     return (
-      execFileSync('git', ['status', '--porcelain', '--', '.'], {
+      execFileSync('git', ['status', '--porcelain', '--', '.', ':(exclude).sforge'], {
         cwd: dir,
         stdio: ['ignore', 'pipe', 'ignore'],
       })

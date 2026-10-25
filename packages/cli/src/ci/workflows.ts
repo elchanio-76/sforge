@@ -211,8 +211,8 @@ ${indent(loginSteps(t), 4)}
     - id: deploy
       name: Deploy the preview
 ${indent(targetEnv(t), 6)}      run: |
-        ${run} deploy ${t.name} --preview pr-\${{ github.event.number }} --no-headless --json > deploy.json
-        echo "url=$(jq -r .data.url deploy.json)" >> "$GITHUB_OUTPUT"
+        ${run} deploy ${t.name} --preview pr-\${{ github.event.number }} --no-headless --json > "$RUNNER_TEMP/deploy.json"
+        echo "url=$(jq -r .data.url "$RUNNER_TEMP/deploy.json")" >> "$GITHUB_OUTPUT"
 `,
   );
 
@@ -286,8 +286,8 @@ ${indent(loginSteps(t), 4)}
     - id: deploy
       name: Deploy
 ${indent(targetEnv(t), 6)}      run: |
-        ${run} deploy ${t.name} --no-headless --json > deploy.json
-        echo "url=$(jq -r .data.url deploy.json)" >> "$GITHUB_OUTPUT"
+        ${run} deploy ${t.name} --no-headless --json > "$RUNNER_TEMP/deploy.json"
+        echo "url=$(jq -r .data.url "$RUNNER_TEMP/deploy.json")" >> "$GITHUB_OUTPUT"
 `,
   );
 

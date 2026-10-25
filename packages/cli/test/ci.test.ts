@@ -168,6 +168,15 @@ describe('sforge ci init', () => {
     expect(rollback.jobs['rollback-azure']!.steps[0]!.with).toEqual({ 'fetch-depth': 0 });
     expect(rollback.jobs['rollback-aws']!.steps[0]!.with).toBeUndefined();
 
+    // Nothing is written into the checkout: a deploy from a dirty tree cannot be rebuilt.
+    for (const job of Object.values(jobs)) {
+      for (const step of job.steps) {
+        expect((step.run ?? '').replaceAll('"$RUNNER_TEMP/deploy.json"', '')).not.toContain(
+          'deploy.json',
+        );
+      }
+    }
+
     // A hung step (e.g. an apt mirror) must not hold a runner for GitHub's six hours.
     for (const file of [site, cleanup, rollback]) {
       for (const [name, job] of Object.entries(file.jobs)) {

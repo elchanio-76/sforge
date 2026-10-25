@@ -6,7 +6,7 @@
   `sforge provision` with packaged HCL modules, run by **OpenTofu** (default) or
   **Terraform**. It changes rarely.
 - **Content** is uploaded by `sforge deploy` with the cloud SDK. Every deploy is a new
-  version; switching versions (deploy, rollback) takes seconds.
+  version; switching versions (deploy, rollback) takes seconds to a few minutes.
 
 AWS and Azure Static Web Apps targets are available. The sections below describe AWS unless they
 say otherwise; [Azure Static Web Apps](#azure-static-web-apps) lists what differs.
@@ -152,8 +152,10 @@ A deploy uploads the build to `v/<versionId>/` in the bucket, where `versionId` 
 `<UTC time>-<git sha>`, for example `20261024T173405Z-6ffcbe4`. Files identical to the previous
 version are copied inside S3 instead of uploaded. Every upload carries its SHA-256, so S3 rejects
 corrupted files. Then the KeyValueStore key `active` is switched to the new version. The router
-function reads it on every request, so a deploy or rollback goes live within seconds, without
-updating the distribution.
+function reads it on every request, so a deploy or rollback goes live without updating the
+distribution: at most edge locations within seconds, at all of them within a few minutes (the
+KeyValueStore is eventually consistent; a rollback in the CI test repository took about two
+minutes to reach every edge).
 
 The router rewrites the URL before CloudFront looks in its cache, so the cache key includes the
 version. A new version is never served from stale cache, and invalidations are unnecessary
