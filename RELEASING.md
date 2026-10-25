@@ -24,9 +24,18 @@ together, with the same version.
 
 3. For each of the 14 packages, on npmjs.com → the package → Settings → Trusted publishing, add a
    GitHub Actions publisher: repository `elchanio-76/sforge`, workflow `release.yml`, environment
-   `npm`. Then disallow token-based publishing.
+   `npm`, and under Allowed actions tick **npm publish**. New entries only allow staged
+   publishing, where every package waits for a manual approval. Then disallow token-based
+   publishing.
+   - The CLI package `staticforge` has no scope, so it is not listed under the `staticforge`
+     organization: find it at npmjs.com/package/staticforge.
+   - All fields must match exactly, and npm does not check them when you save. A mismatch shows
+     up only at release time, as `404 Not Found - PUT https://registry.npmjs.org/<package>`;
+     `403 … OIDC permission denied for this action` means npm publish is not ticked.
 4. In the GitHub repository, create the environment `npm` (Settings → Environments), with
-   required reviewers if releases should be approved.
+   required reviewers if releases should be approved. The repository must be public: npm only
+   accepts provenance from public repositories, and a private one fails with
+   `422 … Unsupported GitHub Actions source repository visibility`.
 
 ## Every release
 
@@ -41,4 +50,6 @@ git push origin main v0.2.0
 The tag starts `.github/workflows/release.yml`: it checks that the tag matches the versions,
 builds, runs the tests and the tarball smoke test, and publishes with provenance through npm
 trusted publishing (no npm token is stored anywhere). `scripts/publish.mjs` skips versions that
-are already published, so a failed release can be re-run.
+are already published, so a failed release can be re-run (`gh run rerun <run id> --failed`).
+The `npm error 404 No match found for version` lines in its log are that check and are expected.
+New versions take a minute or so to appear in `npm view` and `npm install`.
