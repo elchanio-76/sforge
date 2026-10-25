@@ -317,11 +317,7 @@ Generates `.github/workflows/`:
     7. **Live integration tests** (`pnpm test:live`, `packages/cli/test/live.integration.test.ts`, `SFORGE_LIVE=aws|azure` and `SFORGE_LIVE_CONFIRM=<account|subscription id>`): copies the example site into a temporary git repository with a random `iac.name`; provision with state bootstrap, a no-change plan, deploy, HTTP checks (status, security and cache headers, trailing-slash redirect, the 404 page, `.sforge/` hidden, content types, direct S3 access refused), a second deploy (AWS: server-side copies), no drift, two versions, rollback visible within 10 minutes, an Azure preview and its removal, and `destroy` in `afterAll`. **Passed** on 2026-10-25: AWS (sandbox account, eu-north-1; 3 tests, the preview test is Azure-only, ~10 min) and Azure ("Subscription 2", eastus2 with state in northeurope; 4 tests, ~7 min), leaving no resources behind (only the small state files under `sforge-live-*` in the state backends). Fixed during the first runs, all in the test: hooks kept Vitest's 10 s default, so `destroy` in `afterAll` was killed (cleaned up by hand: stale state lock released, `sforge destroy` against the remote state); the project now lives next to the per-run temp root, so it survives a failed destroy for manual cleanup, and is removed after a successful one; the project gets `init`'s `.gitignore` and commits the IaC workspace after provisioning, because Azure refuses to roll back to a version deployed from a dirty checkout.
     8. Docs: README (install, development commands), `docs/content/content.md` (wide tables, large sites), `themes.md` (scrollable content in the accessibility contract, `build.time` under dev), `deploy.md` (live tests), `RELEASING.md`.
 
-11. **M9 Custom domains + GitHub Actions deploys** (AWS and Azure; after M8, because it needs environment decisions that are not made yet):
-    - **DNS and registration (open decision)**: the personal domain is registered at GoDaddy with DNS on Cloudflare. Options to decide between: bring that domain in (a delegated subdomain such as `sforge.<domain>` to a Route 53 hosted zone, about $0.50/month, or CNAME records kept on Cloudflare with no `hostedZone`, which the AWS module already supports by printing the records), or a cheap throwaway test domain registered in Route 53. Tear-down tests should keep the hosted zone and only recreate records and certificates.
-    - **AWS**: verify live what M5 implemented but never ran: ACM certificate with Route 53 validation and alias records, the no-hosted-zone path (printed CNAMEs, `--no-wait`), PR previews on `*.<previewDomain>`, and the GitHub OIDC deploy role (trust policy, least-privilege permissions, reading outputs from state in CI). Possibly a DNS-provider abstraction (e.g. Cloudflare records via its OpenTofu provider) if Cloudflare stays the DNS host.
-    - **Azure**: `azurerm_static_web_app_custom_domain` (cname-delegation or dns-txt-token), optional Azure DNS records, and the `ci-oidc` module (azuread application + federated identity + role assignments).
-    - **CI**: `sforge ci init` (workflow templates: PR build/check/SARIF/preview deploy with a URL comment, `main` → staging, a protected `prod` environment, preview cleanup), pinned action SHAs, and verification step 6 below in a test repository.
+11. **M9 Custom domains + GitHub Actions deploys** (in progress; plan approved 2026-10-25, details in §17): Cloudflare-managed DNS records through a new `dns` target option (`@staticforge/cloudflare`), custom domains `aws.sforge.elchanio-76.eu` (previews on `pr-N.preview.aws.sforge.elchanio-76.eu`) and `azure.sforge.elchanio-76.eu`, the Azure `ci-oidc` identity, per-target base URLs, `sforge ci init`, opt-in domain live tests, and the GitHub flow verified in the test repository `elchanio-76/sforge-ci-test` against `0.2.0-rc.1` (dist-tag `next`).
 
 ## 16. Verification (end to end)
 1. `pnpm -r test` (unit + snapshot + checker fixtures) plus `tofu test` for the HCL modules and `pnpm -r typecheck`.
@@ -331,3 +327,130 @@ Generates `.github/workflows/`:
 5. Azure sandbox: `provision prod` → `deploy prod` → URL serves the site with headers from `staticwebapp.config.json`; `--preview pr-1` creates a named environment; `preview-destroy` removes it.
 6. (M9) GitHub: open a PR in a test repo → workflow builds, checks (SARIF annotations), deploys the preview and comments the URL; merge → deploys staging; close → preview cleaned up.
 7. MCP: run `sforge mcp` with Claude Code (`claude mcp add sforge -- npx sforge mcp`), call `sforge_check` and `sforge_build`, and verify structured results; `sforge_deploy` without `confirm` must refuse.
+
+## 17. M9 plan: custom domains on Cloudflare DNS + GitHub Actions deploys
+
+### Context
+M5 and M6 shipped AWS and Azure without custom domains working end to end. The AWS ACM/Route 53/preview code was written but never run live. Azure rejects `domain`, `dnsZone` and `ci` with `SF_UNSUPPORTED` (`packages/providers/azure/src/iac.ts:165`). `sforge ci init` does not exist yet. M9 closes all three gaps using the user's real domain. `elchanio-76.eu` is registered at GoDaddy and its DNS is on Cloudflare.
+
+Decisions (made with the user, 2026-10-25):
+- **DNS**: sforge manages the records in Cloudflare itself, through a new `dns: { provider: 'cloudflare', zone }` target option and the `cloudflare/cloudflare` OpenTofu provider. Records are DNS-only (never proxied). No Route 53 or Azure DNS zones are needed.
+- **Names**: `aws.sforge.elchanio-76.eu`, with AWS previews on `pr-N.preview.aws.sforge.elchanio-76.eu`. `azure.sforge.elchanio-76.eu`, with Azure previews staying on SWA's own hosts (SWA has no wildcard custom domains).
+- **CI verification**: in a separate public test repo, `elchanio-76/sforge-ci-test`, which installs staticforge from npm.
+- **Live tests**: an opt-in domain mode (`SFORGE_LIVE_DOMAIN`), using random labels under the two subdomains.
+- **Cloudflare MCP**: installed (`cloudflare-api`, `https://mcp.cloudflare.com/mcp`, local scope, code mode on by default). It is a tool for me (pre-flight checks, verification, cleaning up leftovers), not a runtime dependency of sforge.
+
+Target configs the test repo will use:
+```ts
+targets: {
+  aws:   { provider: 'aws', region: 'eu-north-1',
+           domain: 'aws.sforge.elchanio-76.eu', previewDomain: 'preview.aws.sforge.elchanio-76.eu',
+           dns: { provider: 'cloudflare', zone: 'elchanio-76.eu' },
+           ci: { repo: 'elchanio-76/sforge-ci-test', branches: ['main'], pullRequests: true } },
+  azure: { provider: 'azure', resourceGroup: 'rg-sforge-ci-test', location: 'eastus2', state: { location: 'northeurope' },
+           domain: 'azure.sforge.elchanio-76.eu',
+           dns: { provider: 'cloudflare', zone: 'elchanio-76.eu' },
+           ci: { repo: 'elchanio-76/sforge-ci-test', environments: ['production'], pullRequests: true } },
+}
+```
+
+### A. Prerequisites (set up once by the user)
+
+**Cloudflare**
+1. Authenticate the MCP: run `/mcp` → `cloudflare-api` → authenticate in the browser. Grant Zone read and DNS read/write on `elchanio-76.eu`. DNS write lets me remove leftover records after failed live runs.
+2. Create an API token for sforge: Dashboard → My Profile → API Tokens → template **"Edit zone DNS"**, zone `elchanio-76.eu`, plus **Zone → Zone → Read** so sforge can look the zone up by name. Export it as `CLOUDFLARE_API_TOKEN` in your shell. It goes in no file, and CI never needs it, because CI only deploys and never provisions.
+3. **Do not create the subdomain records by hand.** sforge creates and removes them. A pre-existing record with the same name makes the apply fail.
+
+**AWS** (sandbox account, eu-north-1, the same one as M5/M8)
+- Nothing new to create. The admin profile you use for live tests provisions the ACM certificate (us-east-1), CloudFront aliases and the GitHub OIDC provider and role. I'll check whether the account already has a GitHub OIDC provider. sforge reuses it if one exists.
+
+**Azure** ("Subscription 2", eastus2, state in northeurope)
+- Your account must be able to create Entra app registrations. Users can by default, unless the tenant restricts it. The Owner role on the subscription covers the role definitions and assignments.
+
+**GitHub**
+- Create the public repo `elchanio-76/sforge-ci-test` (I can do it with `gh` once you approve). It has to be public because SARIF code scanning is only free on public repos.
+- Create environment `production` with you as the required reviewer, limited to branch `main`.
+- Set the repo variables that `sforge ci init` prints: the AWS role ARN, and the Azure client, tenant and subscription IDs. They are identifiers, not secrets.
+- npm: the release workflow publishes `0.2.0-rc.1` under dist-tag `next` (see F), so the test repo can install M9 before the final release.
+
+### B. DNS provider abstraction + Cloudflare (`@staticforge/cloudflare`, new package 15)
+- **Config** (`packages/core/src/config/schema.ts`): `targets.<n>.dns: { provider: 'cloudflare', zone: hostname, zoneId?: string }` on both providers. It is mutually exclusive with AWS `hostedZone`. The never-implemented Azure `dnsZone` option is removed and replaced by `dns`. `dns` without `domain` is a config error. `domain` and `previewDomain` must lie inside `zone`.
+- **Multiple modules per workspace** (`packages/providers/iac/src/spec.ts`, `workspace.ts`): `IacSpec.module` stays the primary module. A new `additionalModules: ModuleSpec[]` takes inputs that can reference other modules (`{ ref: 'module.site.validation_records' }` → `"${module.site.validation_records}"`), plus optional `dependsOn`. Vendoring (`iac.vendor`) copies these modules too, and the lock file covers the extra providers.
+- **`DnsProvider` interface** (`packages/providers/provider-api`): `prepare(target)` returns required providers, a provider block, a module dir, and env checks. `CLOUDFLARE_API_TOKEN` is required for `provision`, `destroy` and `status`, but not for `purpose: 'outputs'`. Without it the command fails with `SF_CLOUD_AUTH` and a hint. The Cloudflare provider is only added to a workspace whose target has `dns`, so AWS and Azure users without it download nothing extra.
+- **Module** `terraform/modules/records`: `cloudflare_dns_record` resources (provider v5) keyed by the record name (so keys are known at plan time), with `proxied = false`, `ttl = 1` (auto), and comment `staticforge <project>/<target>`. The zone is looked up by name unless `zoneId` is given. It outputs the record ids and FQDNs. `tofu test` with a mock provider covers it.
+- Each site module is wired to **two instances** of this module: `dns_validation` and `dns_routing`. The split avoids a dependency cycle, because the certificate has to be validated before the distribution can use it, and the routing CNAME needs the distribution's hostname.
+
+### C. AWS (`packages/providers/aws`)
+- `modules/site`: new input `validation_record_fqdns` from `module.dns_validation.fqdns`, used by `aws_acm_certificate_validation` so the apply waits for the Cloudflare records. Routing records are CNAMEs: `domain` → distribution domain, and `*.<previewDomain>` → distribution domain.
+- `src/iac.ts`: with `dns`, the profile skips the pre-phase (validation records are created in the same apply) and adds the two DNS modules. The existing Route 53 (`hostedZone`) and print-and-wait paths stay as they are.
+- Verify live what M5 never ran: ACM validation, the custom domain on TLS 1.2_2021, PR previews on `pr-N.preview.aws.sforge…` (KVS host mapping), and the OIDC role used from GitHub Actions. CI reads outputs from the remote state.
+
+### D. Azure (`packages/providers/azure`)
+- **Custom domain** (`modules/site`): `azurerm_static_web_app_custom_domain` with `validation_type = "cname-delegation"`. The provider waits for validation (up to a 30-minute timeout), but the CNAME must already exist. So the resource depends on a `terraform_data` that takes `var.dns_ready` (the `dns_routing` record ids) as its input. Apex domains (which need `dns-txt-token`) are rejected with a clear error for now. The `url` output becomes `https://<domain>/`.
+- **Without `dns`**: a pre-phase, the same mechanism AWS uses for printing CNAMEs. It applies the SWA, prints the CNAME `domain → <default host>`, polls DNS until the name resolves, then applies the custom domain. `--no-wait` stops after printing. I'll verify it once by hand, creating the CNAME through the Cloudflare MCP.
+- **`ci-oidc`** (`modules/site/ci.tf`, adds `hashicorp/azuread` when `ci` is set):
+  - `azuread_application`, service principal, and one federated credential per subject. The subjects match AWS: `repo:o/r:ref:refs/heads/<b>`, `…:environment:<e>`, `…:pull_request`. Issuer is GitHub, audience `api://AzureADTokenExchange`.
+  - A custom role definition, assigned on the SWA only, with the actions the deployer calls: staticSites read, listSecrets, builds read and delete. I'll confirm the exact list against the deployer's ARM calls.
+  - `Storage Blob Data Contributor` on the state container, with an ABAC condition restricting it to `<project>/<target>.tfstate*` and `_sforge/<project>/<target>/` (version history).
+  - Outputs: client id, tenant id, subscription id.
+- Remove the `SF_UNSUPPORTED` guard. Error mapping covers SWA quota limits (2 custom domains on Free) and Entra permission failures.
+
+### E. Per-target base URL (`packages/cli/src/commands/deploy.ts`, core config)
+Production builds for a target with `domain` use `https://<domain>/` (canonical URLs, sitemap, feeds, OG) instead of `site.baseUrl`. `targets.<n>.baseUrl` overrides it. Previews keep using `previewBaseUrl`. Without this, two targets on two domains would publish wrong canonical URLs.
+
+### F. `sforge ci init` + release plumbing
+- **Command**: `sforge ci init [--targets aws,azure] [--production <target>] [--package-manager pnpm|npm] [--force] [--json]`, in `packages/cli/src/commands/ci.ts`, with templates in `packages/cli/src/ci/`. It writes:
+  - `.github/workflows/site.yml`:
+    - **PR**: build, then `check --headless --format sarif`, upload to code scanning, then preview deploy per target, then one upserted PR comment holding the preview URLs (marker `<!-- sforge-preview -->`, posted with `gh`).
+    - **Push to `main`**: deploy the non-production targets.
+    - **Production target**: a job with `environment: production` (needs reviewer approval).
+    - **`workflow_dispatch`**: rollback (`target`, `to`).
+  - `.github/workflows/preview-cleanup.yml`: on `pull_request: closed`, run `preview-destroy` per target.
+- **Workflow details**:
+  - Minimal `permissions` per job (`id-token: write`, `contents: read`, `pull-requests: write` and `security-events: write` only where needed).
+  - Fork PRs are skipped, since they get no OIDC token. `concurrency` is set per target, because concurrent deploys fail on `versions.json`.
+  - `fetch-depth: 0` for Azure rollback by rebuild. Caches for Playwright, the package manager and the OpenTofu download.
+  - Auth: `aws-actions/configure-aws-credentials` (`vars.SFORGE_<TARGET>_ROLE_ARN`) and `azure/login` (OIDC).
+- **Pinned action SHAs** live in one table, `packages/cli/src/ci/actions.ts`. A test checks they are 40-hex with a version comment, and `scripts/ci-pins.mjs` refreshes them with `gh api`.
+- **Variables**: `ci init` reads the cached outputs (`.sforge/state/<target>.json`) and prints the `gh variable set …` commands (also in `--json`). `--json` output and MCP schemas are added for the new command, and the MCP gets no new cloud tool.
+- **Release**: `scripts/publish.mjs` and `release.yml` publish prerelease versions (`x.y.z-rc.N`) under dist-tag `next`, which npm requires for prereleases.
+
+### G. Live tests (`packages/cli/test/live.integration.test.ts`)
+- **Opt-in**: `SFORGE_LIVE_DOMAIN=aws.sforge.elchanio-76.eu` (or the Azure one) plus `SFORGE_LIVE_DNS_ZONE=elchanio-76.eu` and `CLOUDFLARE_API_TOKEN`.
+- The target gets `domain: t-<rand>.<parent>`. AWS also gets `previewDomain: p-<rand>.<parent>`.
+- Checks:
+  - HTTPS on the custom host with a valid certificate (Node's fetch verifies it).
+  - Canonical and sitemap URLs on the domain.
+  - AWS preview at `pr-1.p-<rand>.<parent>`, then `preview-destroy`.
+  - After `destroy`, the Cloudflare records are gone (Cloudflare API, filtered by name).
+- Hook timeouts are raised: AWS ~25 min (certificate + distribution), Azure ~35 min (domain validation + managed certificate). Random labels avoid CloudFront alias conflicts and leftover-record collisions.
+
+### H. Docs and plan
+- `docs/content/deploy.md`: custom domains (Cloudflare, Route 53, manual CNAMEs), DNS-only requirement, CAA notes, token scope.
+- New `docs/content/ci.md`: `sforge ci init`, variables, environments, forks.
+- Config reference regenerated (`pnpm schema:generate`).
+- `PLAN.md`: replace the M9 entry with this plan, and update §8a/§9/§10/§13 as decisions land.
+
+### Order of work
+1. You: Cloudflare MCP OAuth + API token (A).
+2. Me, via MCP: pre-flight on `elchanio-76.eu`. Check for existing records under `sforge.`, CAA records (they must allow `amazon.com` and SWA's issuer if any CAA exists), and the DNSSEC/proxy defaults. Fixed before any apply.
+3. Code B → C → E → D → F with unit and `tofu test` coverage, then `pnpm -r test`, `pnpm test:iac`, `pnpm -r typecheck`, lint.
+4. Live domain tests: AWS, then Azure (G). This creates and destroys sandbox resources, so I'll ask before each run.
+5. Release `0.2.0-rc.1` (`next`) through the tag workflow. You push the tag, as in M8.
+6. Test repo: `sforge init`, `ci init`, then `provision aws` and `provision azure` locally (admin profile + `CLOUDFLARE_API_TOKEN`), then set variables and run the GitHub flow (verification step 6).
+7. Fixes found, then release `0.2.0`, then update PLAN.md and commit.
+
+### Verification
+- `pnpm -r test`, `pnpm test:iac` (new `records` module, AWS/Azure modules with `dns` and `ci`, workspaces with additional modules validated by OpenTofu and Terraform), `pnpm test:pack` (15 packages).
+- `pnpm test:live` with `SFORGE_LIVE=aws|azure`, with and without `SFORGE_LIVE_DOMAIN`. Both pass and leave no records or resources behind, confirmed through the Cloudflare MCP and the cloud CLIs.
+- Test repo (PLAN §16 step 6):
+  - **Open a PR**: SARIF annotations, previews on `pr-N.preview.aws.sforge…` and the SWA preview host, one PR comment with both URLs.
+  - **Merge**: `aws.sforge…` updates. The `production` job waits for approval, then `azure.sforge…` updates.
+  - **Close a PR**: previews are removed.
+  - **Rollback dispatch**: works for both targets.
+- **Least privilege**: the CI identities cannot provision. A deliberate `sforge provision --diff` in CI fails with `SF_CLOUD_AUTH` beyond reading state.
+- Optional, your call: Route 53 `hostedZone` path, by delegating `r53.sforge.elchanio-76.eu` to a hosted zone that is deleted within 12 hours (no charge).
+
+### Not in M9
+- Hosting the docs site (M8 deferred it here). I'd suggest `docs.sforge.elchanio-76.eu` as a follow-up once the CI flow is proven.
+- Azure apex domains (`dns-txt-token`), Azure DNS zones, and Cloudflare proxying.
