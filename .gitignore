@@ -13,3 +13,6 @@ packages/providers/*/terraform/**/.terraform.lock.hcl
 *.log
 .DS_Store
 sites/
+
+# Local environment (direnv); holds tokens
+.envrc

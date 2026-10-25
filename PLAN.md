@@ -338,7 +338,7 @@ Decisions (made with the user, 2026-10-25):
 - **Names**: `aws.sforge.elchanio-76.eu`, with AWS previews on `pr-N.preview.aws.sforge.elchanio-76.eu`. `azure.sforge.elchanio-76.eu`, with Azure previews staying on SWA's own hosts (SWA has no wildcard custom domains).
 - **CI verification**: in a separate public test repo, `elchanio-76/sforge-ci-test`, which installs staticforge from npm.
 - **Live tests**: an opt-in domain mode (`SFORGE_LIVE_DOMAIN`), using random labels under the two subdomains.
-- **Cloudflare MCP**: installed (`cloudflare-api`, `https://mcp.cloudflare.com/mcp`, local scope, code mode on by default). It is a tool for me (pre-flight checks, verification, cleaning up leftovers), not a runtime dependency of sforge.
+- **Cloudflare MCP**: installed (`cloudflare-api`, `https://mcp.cloudflare.com/mcp`, local scope, code mode on by default). It is authorized read-only (the consent screen offers only minimal, read-only and full-access presets) and is a tool for me (pre-flight checks, verifying records), not a runtime dependency of sforge. Leftover records from failed runs are removed by `sforge destroy` with sforge's own token, or listed for the user to delete.
 
 Target configs the test repo will use:
 ```ts
@@ -357,7 +357,7 @@ targets: {
 ### A. Prerequisites (set up once by the user)
 
 **Cloudflare**
-1. Authenticate the MCP: run `/mcp` → `cloudflare-api` → authenticate in the browser. Grant Zone read and DNS read/write on `elchanio-76.eu`. DNS write lets me remove leftover records after failed live runs.
+1. Authenticate the MCP: run `/mcp` → `cloudflare-api` → authenticate in the browser with the **read-only** preset (done 2026-10-25; full access would grant write on the whole account).
 2. Create an API token for sforge: Dashboard → My Profile → API Tokens → template **"Edit zone DNS"**, zone `elchanio-76.eu`, plus **Zone → Zone → Read** so sforge can look the zone up by name. Export it as `CLOUDFLARE_API_TOKEN` in your shell. It goes in no file, and CI never needs it, because CI only deploys and never provisions.
 3. **Do not create the subdomain records by hand.** sforge creates and removes them. A pre-existing record with the same name makes the apply fail.
 
@@ -433,7 +433,7 @@ Production builds for a target with `domain` use `https://<domain>/` (canonical 
 
 ### Order of work
 1. You: Cloudflare MCP OAuth + API token (A).
-2. Me, via MCP: pre-flight on `elchanio-76.eu`. Check for existing records under `sforge.`, CAA records (they must allow `amazon.com` and SWA's issuer if any CAA exists), and the DNSSEC/proxy defaults. Fixed before any apply.
+2. Me, via MCP: pre-flight on `elchanio-76.eu` (done 2026-10-25): zone active on the Free plan, DNSSEC active, no CAA records (any CA may issue, so ACM and SWA are fine), no wildcard and no records under `sforge.`. The token (loaded from the user's `.envrc` through direnv; `direnv exec .` in non-interactive shells) is an account token: it reads the zone, while `/user/tokens/verify` rejects it as a non-user token.
 3. Code B → C → E → D → F with unit and `tofu test` coverage, then `pnpm -r test`, `pnpm test:iac`, `pnpm -r typecheck`, lint.
 4. Live domain tests: AWS, then Azure (G). This creates and destroys sandbox resources, so I'll ask before each run.
 5. Release `0.2.0-rc.1` (`next`) through the tag workflow. You push the tag, as in M8.
