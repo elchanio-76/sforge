@@ -318,6 +318,9 @@ importers:
       '@staticforge/checker':
         specifier: workspace:*
         version: link:../checker
+      '@staticforge/cloudflare':
+        specifier: workspace:*
+        version: link:../providers/cloudflare
       '@staticforge/core':
         specifier: workspace:*
         version: link:../core
@@ -514,6 +517,15 @@ importers:
       '@staticforge/provider-api':
         specifier: workspace:*
         version: link:../provider-api
+
+  packages/providers/cloudflare:
+    dependencies:
+      '@staticforge/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@staticforge/iac':
+        specifier: workspace:*
+        version: link:../iac
 
   packages/providers/iac:
     dependencies:

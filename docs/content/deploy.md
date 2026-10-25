@@ -251,7 +251,7 @@ providers itself.
 **Target options**: `resourceGroup` (created and deleted with the site unless
 `createResourceGroup: false`), `location` (`westus2`, `centralus`, `eastus2`, `westeurope` or
 `eastasia`: the only regions with Static Web Apps), `sku` (`Free` or `Standard`),
-`retainVersions` (deploys remembered for rollback, default 10) and `state`. `domain`, `dnsZone` and
+`retainVersions` (deploys remembered for rollback, default 10) and `state`. `domain`, `dns` and
 `ci` are rejected for now (`SF_UNSUPPORTED`): custom domains and the GitHub Actions identity are
 milestone M9, so the site is served at its `*.azurestaticapps.net` URL. Set `site.baseUrl` to
 that URL (printed by `provision`) so canonical links and the sitemap are right.

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import type { IacProfile } from '@staticforge/iac';
+import { type DnsProfile, type IacProfile, prepareDns } from '@staticforge/iac';
 import type { DeployOptions, Deployer, Provider } from '@staticforge/provider-api';
 import { applyCreates, fakeEngine, planCreates } from '../../providers/iac/test/fake-engine.js';
 import type { Io } from '../src/io.js';
@@ -27,6 +27,7 @@ interface Options {
   /** Answers to prompts; a TTY is simulated when given. */
   answers?: string[];
   providers?: Partial<Record<'aws' | 'azure', Provider>>;
+  dns?: Partial<Record<'cloudflare', DnsProfile>>;
 }
 
 async function sforge(args: string[], options: Options) {
@@ -46,11 +47,10 @@ async function sforge(args: string[], options: Options) {
       return answers.shift() ?? '';
     },
   };
-  const exitCode = await run(
-    ['node', 'sforge', ...args],
-    io,
-    options.providers ? { providers: options.providers } : {},
-  );
+  const exitCode = await run(['node', 'sforge', ...args], io, {
+    ...(options.providers && { providers: options.providers }),
+    ...(options.dns && { dns: options.dns }),
+  });
   const out = stdout.text();
   // Every --json document must match `sforge schema output`.
   if (args.includes('--json') && out.trim() !== '') expectValidEnvelope(JSON.parse(out));
@@ -310,6 +310,74 @@ describe('sforge provision', () => {
       code: 'SF_UNSUPPORTED',
       hint: expect.stringContaining('M9'),
     });
+  });
+});
+
+describe('targets with dns', () => {
+  const targets = {
+    staging: {
+      provider: 'aws',
+      region: 'eu-central-1',
+      domain: 'www.example.com',
+      dns: { provider: 'cloudflare', zone: 'example.com' },
+    },
+  };
+
+  /** A provider whose profile prepares the target's DNS like the real ones. */
+  function dnsAwareProvider() {
+    const { provider } = fakeProvider();
+    const prepare = provider.iac.prepare.bind(provider.iac);
+    const zones: string[] = [];
+    provider.iac = {
+      provider: 'aws',
+      async prepare(input) {
+        const dns = await prepareDns(input, ['www.example.com']);
+        if (dns !== undefined) zones.push(String(dns.records('r', { ref: 'x' }).inputs.zone_id));
+        return prepare(input);
+      },
+    };
+    return { provider, zones };
+  }
+
+  it('loads the DNS provider and hands it to the profile', async () => {
+    const cwd = project(targets);
+    const { env } = engineEnv({ plan: planCreates('module.site.aws_s3_bucket.site') });
+    const { provider, zones } = dnsAwareProvider();
+    const dns: DnsProfile = {
+      provider: 'cloudflare',
+      async prepare() {
+        return {
+          requiredProviders: {},
+          providers: {},
+          records: (name, records) => ({ name, dir: '/r', inputs: { zone_id: 'zone-1', records } }),
+        };
+      },
+    };
+    const result = await sforge(['provision', 'staging', '--diff', '--json'], {
+      cwd,
+      env,
+      providers: { aws: provider },
+      dns: { cloudflare: dns },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(zones).toEqual(['zone-1']);
+  });
+
+  it('asks for the Cloudflare API token before planning', async () => {
+    const cwd = project(targets);
+    const { fake, env } = engineEnv({});
+    const result = await sforge(['provision', 'staging', '--diff', '--json'], {
+      cwd,
+      env,
+      providers: { aws: dnsAwareProvider().provider },
+    });
+    expect(result.exitCode).toBe(2);
+    expect(result.json().error).toMatchObject({
+      code: 'SF_CLOUD_AUTH',
+      message: 'CLOUDFLARE_API_TOKEN is not set',
+      hint: expect.stringContaining('Edit zone DNS'),
+    });
+    expect(fake.calls().map((c) => c.args[0])).not.toContain('plan');
   });
 });
 

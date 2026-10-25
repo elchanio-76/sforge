@@ -95,12 +95,35 @@ export interface InitOptions {
 }
 
 /**
- * `init`. The first init also records provider checksums for the common
- * platforms in `.terraform.lock.hcl`.
+ * Whether `.terraform.lock.hcl` lacks a provider that `main.tf.json` requires
+ * (e.g. a DNS provider added to a provisioned target): init would lock it for
+ * the current platform only. A missing lock file counts as lacking all.
+ */
+function lockIncomplete(dir: string): boolean {
+  const lockFile = join(dir, '.terraform.lock.hcl');
+  if (!existsSync(lockFile)) return true;
+  let required: Record<string, { source?: string }> = {};
+  try {
+    const main = JSON.parse(readFileSync(join(dir, 'main.tf.json'), 'utf8')) as {
+      terraform?: { required_providers?: typeof required };
+    };
+    required = main.terraform?.required_providers ?? {};
+  } catch {
+    return false;
+  }
+  const lock = readFileSync(lockFile, 'utf8').toLowerCase();
+  return Object.values(required).some(
+    (p) => p.source !== undefined && !lock.includes(`/${p.source.toLowerCase()}"`),
+  );
+}
+
+/**
+ * `init`. When the lock file is new or lacks a required provider, init also
+ * records provider checksums for the common platforms in `.terraform.lock.hcl`.
  */
 export async function init(ws: Workspace, options: InitOptions = {}): Promise<void> {
   const lockFile = join(ws.dir, '.terraform.lock.hcl');
-  const hadLock = existsSync(lockFile);
+  const needsPlatforms = lockIncomplete(ws.dir);
   const args = ['init', '-input=false', '-no-color'];
   if (options.migrateState) args.push('-migrate-state', '-force-copy');
   if (options.reconfigure) args.push('-reconfigure');
@@ -118,7 +141,7 @@ export async function init(ws: Workspace, options: InitOptions = {}): Promise<vo
     });
   }
   assertSucceeded(result, `${ws.engine.name} init`);
-  if (!hadLock && existsSync(lockFile)) {
+  if (needsPlatforms && existsSync(lockFile)) {
     const lock = await run(
       ws,
       ['providers', 'lock', ...LOCK_PLATFORMS.map((p) => `-platform=${p}`)],

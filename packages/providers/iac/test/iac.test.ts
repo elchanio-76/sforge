@@ -17,6 +17,7 @@ import {
   type IacSpec,
   type StateBackend,
   compareVersions,
+  iacRef,
   destroy,
   detectDrift,
   downloadTofu,
@@ -311,6 +312,127 @@ describe('workspace generation', () => {
     expect(existsSync(join(dir, 'modules', 'site', 'main.tf'))).toBe(true);
     expect(existsSync(join(dir, 'modules', 'site', 'tests'))).toBe(false);
     expect(readFileSync(join(dir, '.gitignore'), 'utf8')).not.toContain('main.tf.json');
+  });
+});
+
+describe('workspaces with several modules', () => {
+  function withRecords(module: string, records: string): IacSpec {
+    return {
+      ...spec(module, s3),
+      requiredProviders: {
+        aws: { source: 'hashicorp/aws', version: '~> 6.0' },
+        cloudflare: { source: 'cloudflare/cloudflare', version: '>= 5.0, < 6.0' },
+      },
+      module: {
+        ...spec(module, s3).module,
+        inputs: {
+          name: 'www-example-com',
+          validation_record_fqdns: iacRef('module.dns_validation.fqdns'),
+        },
+      },
+      additionalModules: ['dns_validation', 'dns_routing'].map((name) => ({
+        name,
+        dir: records,
+        inputs: {
+          zone_id: 'abc',
+          records: iacRef(`module.site.${name === 'dns_routing' ? 'dns' : 'validation'}_records`),
+        },
+      })),
+    };
+  }
+
+  it('passes references as expressions and literals through prefixed variables', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sforge-ws-'));
+    writeWorkspace({ dir, spec: withRecords(moduleDir(), moduleDir()) });
+    const main = JSON.parse(readFileSync(join(dir, 'main.tf.json'), 'utf8'));
+    expect(main.module.site).toMatchObject({
+      name: '${var.name}',
+      validation_record_fqdns: '${module.dns_validation.fqdns}',
+    });
+    expect(main.module.dns_routing).toMatchObject({
+      zone_id: '${var.dns_routing__zone_id}',
+      records: '${module.site.dns_records}',
+    });
+    expect(main.module.dns_validation.records).toBe('${module.site.validation_records}');
+    expect(main.variable).toEqual({
+      name: {},
+      dns_validation__zone_id: {},
+      dns_routing__zone_id: {},
+    });
+    expect(JSON.parse(readFileSync(join(dir, 'terraform.tfvars.json'), 'utf8'))).toEqual({
+      name: 'www-example-com',
+      dns_validation__zone_id: 'abc',
+      dns_routing__zone_id: 'abc',
+    });
+    expect(main.output.bucket).toEqual({ value: '${module.site.bucket}' });
+  });
+
+  it('vendors every module and removes copies of modules no longer used', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sforge-ws-'));
+    const module = moduleDir();
+    writeWorkspace({ dir, spec: withRecords(module, moduleDir()), vendor: true });
+    const main = JSON.parse(readFileSync(join(dir, 'main.tf.json'), 'utf8'));
+    expect(main.module.dns_routing.source).toBe('./modules/dns_routing');
+    expect(existsSync(join(dir, 'modules', 'dns_validation', 'main.tf'))).toBe(true);
+    expect(existsSync(join(dir, 'modules', 'dns_validation', 'tests'))).toBe(false);
+
+    writeWorkspace({ dir, spec: spec(module, s3), vendor: true });
+    expect(existsSync(join(dir, 'modules', 'site', 'main.tf'))).toBe(true);
+    expect(existsSync(join(dir, 'modules', 'dns_routing'))).toBe(false);
+  });
+
+  it('refuses two modules with the same name', () => {
+    const module = moduleDir();
+    const twice = { ...spec(module, s3), additionalModules: [spec(module, s3).module] };
+    expect(() =>
+      writeWorkspace({ dir: mkdtempSync(join(tmpdir(), 'sforge-ws-')), spec: twice }),
+    ).toThrow(/Two modules named "site"/);
+  });
+
+  it('locks every platform again when a provider is added', async () => {
+    const { rootDir, config } = project();
+    const module = moduleDir();
+    const records = moduleDir();
+    let current = spec(module, s3);
+    const changing: IacProfile = {
+      provider: 'aws',
+      async prepare() {
+        const base = await profile({}, module).prepare({} as never);
+        return { ...base, spec: current };
+      },
+    };
+    const lock = (...providers: string[]) =>
+      providers.map((p) => `provider "registry.opentofu.org/${p}" {}\n`).join('');
+    const fake = fakeEngine({
+      init: [
+        { files: { '.terraform.lock.hcl': lock('hashicorp/aws') } },
+        {},
+        { files: { '.terraform.lock.hcl': lock('hashicorp/aws', 'cloudflare/cloudflare') } },
+        {},
+      ],
+    });
+    const run = () =>
+      provision({
+        rootDir,
+        config,
+        targetName: 'staging',
+        profile: changing,
+        logger,
+        engine: fake.engine,
+        env: {},
+        diff: true,
+      });
+    const commands = () => fake.calls().map((c) => c.args[0]);
+
+    await run();
+    expect(commands()).toEqual(['init', 'providers', 'plan']);
+    await run();
+    expect(commands().slice(3)).toEqual(['init', 'plan']);
+    current = withRecords(module, records);
+    await run();
+    expect(commands().slice(5)).toEqual(['init', 'providers', 'plan']);
+    await run();
+    expect(commands().slice(8)).toEqual(['init', 'plan']);
   });
 });
 

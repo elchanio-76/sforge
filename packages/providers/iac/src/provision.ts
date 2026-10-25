@@ -16,7 +16,7 @@ import {
   refreshState,
 } from './operations.js';
 import { type RunResult, runEngine } from './runner.js';
-import type { IacProfile, IacSpec, PreparedTarget, StateBackend } from './spec.js';
+import type { DnsProfile, IacProfile, IacSpec, PreparedTarget, StateBackend } from './spec.js';
 import { extraHclDir, workspaceDir, writeWorkspace } from './workspace.js';
 
 /** `.sforge/state/<target>.json`: the non-secret outputs of the last apply. */
@@ -58,6 +58,8 @@ export interface IacRunOptions {
   config: SforgeConfig;
   targetName: string;
   profile: IacProfile;
+  /** The DNS provider of the target's `dns`, when it is set. */
+  dns?: DnsProfile;
   env?: NodeJS.ProcessEnv;
   logger: Logger;
   /** Keep state in the workspace instead of the remote backend. */
@@ -103,6 +105,7 @@ async function open(options: IacRunOptions): Promise<Opened> {
     logger: options.logger,
     ...(options.inputs && { inputs: options.inputs }),
     ...(options.purpose && { purpose: options.purpose }),
+    ...(options.dns && { dns: options.dns }),
   });
   if (options.localState)
     prepared.spec = { ...prepared.spec, backend: { type: 'local', config: {} } };

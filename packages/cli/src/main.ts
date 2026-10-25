@@ -62,7 +62,7 @@ export function createProgram(runtime: Runtime): Command {
 export async function run(
   argv: string[],
   io: Io = processIo(),
-  hooks: Pick<Runtime, 'providers' | 'onResult'> = {},
+  hooks: Pick<Runtime, 'providers' | 'dns' | 'onResult'> = {},
 ): Promise<ExitCode> {
   const runtime: Runtime = { io, exitCode: ExitCode.Ok, ...hooks };
   const program = createProgram(runtime);

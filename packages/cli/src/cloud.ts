@@ -1,4 +1,5 @@
 import {
+  type DnsConfig,
   type LoadedConfig,
   type TargetConfig,
   ErrorCode,
@@ -7,6 +8,7 @@ import {
 } from '@staticforge/core';
 import {
   type Confirm,
+  type DnsProfile,
   type IacRunOptions,
   type PlanSummary,
   targetOutputs,
@@ -28,6 +30,13 @@ export async function providerFor(runtime: Runtime, target: TargetConfig): Promi
     : (await import('@staticforge/azure')).createAzureProvider();
 }
 
+/** The DNS provider of a target's `dns`, loaded on demand like the cloud providers. */
+export async function dnsProfileFor(runtime: Runtime, dns: DnsConfig): Promise<DnsProfile> {
+  const injected = runtime.dns?.[dns.provider];
+  if (injected !== undefined) return injected;
+  return (await import('@staticforge/cloudflare')).createCloudflareDns();
+}
+
 export interface TargetContext {
   loaded: LoadedConfig;
   targetName: string;
@@ -45,6 +54,7 @@ export async function targetContext(
 ): Promise<TargetContext> {
   const target = getTarget(loaded.config, targetName);
   const provider = await providerFor(runtime, target);
+  const dns = target.dns === undefined ? undefined : await dnsProfileFor(runtime, target.dns);
   return {
     loaded,
     targetName,
@@ -55,6 +65,7 @@ export async function targetContext(
       config: loaded.config,
       targetName,
       profile: provider.iac,
+      ...(dns && { dns }),
       env: ctx.io.env,
       logger: ctx.logger,
       localState,

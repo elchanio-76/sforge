@@ -1,0 +1,47 @@
+{
+  "name": "@staticforge/cloudflare",
+  "version": "0.1.1",
+  "description": "Cloudflare DNS for staticforge: the records of custom domains, managed with OpenTofu/Terraform",
+  "keywords": [
+    "staticforge",
+    "cloudflare",
+    "dns",
+    "opentofu",
+    "terraform"
+  ],
+  "homepage": "https://github.com/elchanio-76/sforge#readme",
+  "bugs": {
+    "url": "https://github.com/elchanio-76/sforge/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elchanio-76/sforge.git",
+    "directory": "packages/providers/cloudflare"
+  },
+  "license": "MIT",
+  "author": "Eleftherios Chaniotakis",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@staticforge/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "terraform/**/*.tf",
+    "!terraform/**/.terraform.lock.hcl",
+    "!terraform/**/tests/**"
+  ],
+  "engines": {
+    "node": "^22.22.0 || >=24.8.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@staticforge/core": "workspace:*",
+    "@staticforge/iac": "workspace:*"
+  }
+}

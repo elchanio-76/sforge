@@ -163,7 +163,7 @@ export function createAzureIacProfile(clients: AzureClients = defaultClients()):
 
       for (const [option, label] of [
         [target.domain, 'domain'],
-        [target.dnsZone, 'dnsZone'],
+        [target.dns, 'dns'],
         [target.ci, 'ci'],
       ] as const) {
         if (option !== undefined) {

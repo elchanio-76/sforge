@@ -8,8 +8,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
+import { ErrorCode, SforgeError } from '@staticforge/core';
 import { MIN_ENGINE_VERSION } from './engine.js';
-import type { IacSpec } from './spec.js';
+import { type IacSpec, type ModuleSpec, isIacRef } from './spec.js';
 
 /** Root of the generated workspaces inside a project. */
 export const IAC_DIR = join('.sforge', 'iac');
@@ -33,7 +34,7 @@ const EXTRA_PREFIX = 'infra_';
 export interface WriteWorkspaceOptions {
   dir: string;
   spec: IacSpec;
-  /** Copy the module into `modules/<name>/` instead of referencing the packaged copy. */
+  /** Copy the modules into `modules/<name>/` instead of referencing the packaged copies. */
   vendor?: boolean;
   /** Directory of extra `.tf` / `.tf.json` files to merge into the workspace. */
   extraDir?: string;
@@ -48,9 +49,19 @@ function writeJson(path: string, value: unknown): void {
 }
 
 /**
+ * Root variable of a literal module input: the input's own name for the main
+ * module (so `terraform.tfvars.json` reads like the module's inputs), and
+ * `<module>__<input>` for additional modules.
+ */
+function variableName(spec: IacSpec, module: ModuleSpec, input: string): string {
+  return module === spec.module ? input : `${module.name}__${input}`;
+}
+
+/**
  * Write the root workspace for a spec:
- * - `main.tf.json`: required providers, provider configs, a module block that
- *   passes every input from a root variable, and the re-exported outputs;
+ * - `main.tf.json`: required providers, provider configs, one block per module
+ *   that passes literal inputs from root variables and references to other
+ *   modules as expressions, and the re-exported outputs;
  * - `backend.tf.json` (absent for local state);
  * - `terraform.tfvars.json`: the module inputs;
  * - `.gitignore`: keeps `.terraform/`, plans and local state out of git.
@@ -63,37 +74,59 @@ export function writeWorkspace(options: WriteWorkspaceOptions): string[] {
   mkdirSync(dir, { recursive: true });
   const written: string[] = [];
 
-  let source: string;
-  const vendored = join(dir, 'modules', spec.module.name);
-  rmSync(vendored, { recursive: true, force: true });
-  if (options.vendor) {
-    cpSync(spec.module.dir, vendored, {
-      recursive: true,
-      filter: (path) =>
-        !/[\\/](\.terraform|tests)([\\/]|$)/.test(path.slice(spec.module.dir.length)),
-    });
-    source = `./modules/${spec.module.name}`;
-  } else {
-    const rel = toPosix(relative(dir, spec.module.dir));
-    source = rel.startsWith('.') ? rel : `./${rel}`;
+  const modules = [spec.module, ...(spec.additionalModules ?? [])];
+  const vendoredRoot = join(dir, 'modules');
+  rmSync(vendoredRoot, { recursive: true, force: true });
+  const variables: Record<string, unknown> = {};
+  const blocks: Record<string, Record<string, unknown>> = {};
+  for (const module of modules) {
+    if (blocks[module.name] !== undefined) {
+      throw new SforgeError(ErrorCode.Internal, `Two modules named "${module.name}"`);
+    }
+    let source: string;
+    if (options.vendor) {
+      cpSync(module.dir, join(vendoredRoot, module.name), {
+        recursive: true,
+        filter: (path) => !/[\\/](\.terraform|tests)([\\/]|$)/.test(path.slice(module.dir.length)),
+      });
+      source = `./modules/${module.name}`;
+    } else {
+      const rel = toPosix(relative(dir, module.dir));
+      source = rel.startsWith('.') ? rel : `./${rel}`;
+    }
+    const args: Record<string, string> = {};
+    for (const input of Object.keys(module.inputs).sort()) {
+      const value = module.inputs[input];
+      if (isIacRef(value)) {
+        args[input] = `\${${value.ref}}`;
+        continue;
+      }
+      const variable = variableName(spec, module, input);
+      if (variable in variables) {
+        throw new SforgeError(ErrorCode.Internal, `Two module inputs use variable "${variable}"`);
+      }
+      variables[variable] = value;
+      args[input] = `\${var.${variable}}`;
+    }
+    blocks[module.name] = {
+      source,
+      ...(module.providers && { providers: module.providers }),
+      ...args,
+    };
   }
 
-  const inputs = Object.keys(spec.module.inputs).sort();
   const main = {
     '//': GENERATED_NOTE,
     terraform: {
       required_version: `>= ${MIN_ENGINE_VERSION}`,
       required_providers: spec.requiredProviders,
     },
-    provider: spec.providers,
-    variable: Object.fromEntries(inputs.map((name) => [name, {}])),
-    module: {
-      [spec.module.name]: {
-        source,
-        ...(spec.module.providers && { providers: spec.module.providers }),
-        ...Object.fromEntries(inputs.map((name) => [name, `\${var.${name}}`])),
-      },
-    },
+    // An empty block object reads as a block without its label: leave those out.
+    ...(Object.keys(spec.providers).length > 0 && { provider: spec.providers }),
+    ...(Object.keys(variables).length > 0 && {
+      variable: Object.fromEntries(Object.keys(variables).map((name) => [name, {}])),
+    }),
+    module: blocks,
     ...(spec.outputs.length > 0 && {
       output: Object.fromEntries(
         spec.outputs.map((name) => [name, { value: `\${module.${spec.module.name}.${name}}` }]),
@@ -114,7 +147,7 @@ export function writeWorkspace(options: WriteWorkspaceOptions): string[] {
     written.push('backend.tf.json');
   }
 
-  writeJson(join(dir, 'terraform.tfvars.json'), spec.module.inputs);
+  writeJson(join(dir, 'terraform.tfvars.json'), variables);
   written.push('terraform.tfvars.json');
 
   // Without vendoring, main.tf.json holds a path into node_modules that differs per machine.

@@ -1,4 +1,4 @@
-import type { Logger, SforgeConfig, TargetConfig } from '@staticforge/core';
+import type { DnsConfig, Logger, SforgeConfig, TargetConfig } from '@staticforge/core';
 
 /** Where OpenTofu/Terraform keeps a workspace's state. */
 export interface IacBackend {
@@ -8,23 +8,51 @@ export interface IacBackend {
 }
 
 /**
- * Everything needed to generate a root workspace around one packaged module:
- * providers, the module and its inputs, outputs and the backend.
+ * A module input computed by the engine from another module, e.g.
+ * `module.site.dns_records`. Written into the module block as an expression
+ * instead of being passed through a root variable.
+ */
+export interface IacRef {
+  ref: string;
+}
+
+export function iacRef(ref: string): IacRef {
+  return { ref };
+}
+
+export function isIacRef(value: unknown): value is IacRef {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.keys(value).length === 1 &&
+    typeof (value as { ref?: unknown }).ref === 'string'
+  );
+}
+
+/** A module block of a generated workspace. */
+export interface ModuleSpec {
+  /** Name of the module block (and of the vendored copy). */
+  name: string;
+  /** Absolute directory of the packaged HCL module. */
+  dir: string;
+  /** Literal values, or references to other modules' outputs. */
+  inputs: Record<string, unknown>;
+  /** Aliased providers passed to the module, e.g. `{ "aws.us_east_1": "aws.us_east_1" }`. */
+  providers?: Record<string, string>;
+}
+
+/**
+ * Everything needed to generate a root workspace around a packaged module:
+ * providers, the module and its inputs, outputs and the backend. Additional
+ * modules (e.g. DNS records) are wired to it through `IacRef` inputs.
  */
 export interface IacSpec {
   requiredProviders: Record<string, { source: string; version: string }>;
   /** Root provider configurations; several per name for aliases. */
   providers: Record<string, Record<string, unknown>[]>;
-  module: {
-    /** Name of the module block (and of the vendored copy). */
-    name: string;
-    /** Absolute directory of the packaged HCL module. */
-    dir: string;
-    inputs: Record<string, unknown>;
-    /** Aliased providers passed to the module, e.g. `{ "aws.us_east_1": "aws.us_east_1" }`. */
-    providers?: Record<string, string>;
-  };
-  /** Module outputs re-exported as root outputs (and cached after apply). */
+  module: ModuleSpec;
+  additionalModules?: ModuleSpec[];
+  /** Outputs of `module` re-exported as root outputs (and cached after apply). */
   outputs: string[];
   backend: IacBackend;
   /** Extra environment variables for the engine. */
@@ -57,6 +85,8 @@ export interface ProfileInput {
    * CI), so lookups that only affect inputs can be skipped.
    */
   purpose?: 'provision' | 'outputs';
+  /** The DNS provider of `target.dns`, when it is set. */
+  dns?: DnsProfile;
 }
 
 export interface PreparedTarget {
@@ -78,6 +108,33 @@ export interface PreparedTarget {
     targets: string[];
     describe(outputs: Record<string, unknown>): string | undefined;
   };
+}
+
+export interface DnsProfileInput {
+  dns: DnsConfig;
+  /** `<project>/<target>`, recorded with each record. */
+  owner: string;
+  env: NodeJS.ProcessEnv;
+  logger: Logger;
+  purpose?: ProfileInput['purpose'];
+}
+
+/** What a DNS provider adds to a workspace. */
+export interface PreparedDns {
+  requiredProviders: IacSpec['requiredProviders'];
+  providers: IacSpec['providers'];
+  /**
+   * A module instance that creates `records`: a reference to a map from a key
+   * known when planning to `{ name, type, value }`. It outputs `fqdns`, the
+   * names of the records it created.
+   */
+  records(name: string, records: IacRef): ModuleSpec;
+}
+
+/** A DNS provider: records for custom domains, created alongside a target. */
+export interface DnsProfile {
+  provider: DnsConfig['provider'];
+  prepare(input: DnsProfileInput): Promise<PreparedDns>;
 }
 
 /** Provider-specific IaC knowledge: modules, backends and credentials. */

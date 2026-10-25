@@ -412,9 +412,34 @@
                 "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
               },
               "hostedZone": {
-                "description": "Route 53 hosted zone for automatic DNS validation and alias records.",
+                "description": "Route 53 hosted zone for automatic DNS validation and alias records. Not with dns.",
                 "type": "string",
                 "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+              },
+              "dns": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "const": "cloudflare"
+                  },
+                  "zone": {
+                    "type": "string",
+                    "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$",
+                    "description": "The DNS zone (domain) that holds the records, e.g. \"example.com\"."
+                  },
+                  "zoneId": {
+                    "description": "Zone ID. Defaults to a lookup of the zone by name (needs Zone Read).",
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "zone"
+                ],
+                "additionalProperties": false,
+                "description": "Create the DNS records of the custom domain (certificate validation, routing). Records are DNS-only, never proxied. The API token comes from CLOUDFLARE_API_TOKEN."
               },
               "previewDomain": {
                 "description": "Wildcard parent for PR previews (pr-<n>.<previewDomain>). Requires a custom domain.",
@@ -551,12 +576,34 @@
                 "maximum": 100
               },
               "domain": {
+                "description": "Custom domain (not the zone apex). Omit to use the *.azurestaticapps.net URL.",
                 "type": "string",
                 "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
               },
-              "dnsZone": {
-                "description": "Azure DNS zone resource ID for automatic CNAME records.",
-                "type": "string"
+              "dns": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "const": "cloudflare"
+                  },
+                  "zone": {
+                    "type": "string",
+                    "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$",
+                    "description": "The DNS zone (domain) that holds the records, e.g. \"example.com\"."
+                  },
+                  "zoneId": {
+                    "description": "Zone ID. Defaults to a lookup of the zone by name (needs Zone Read).",
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "zone"
+                ],
+                "additionalProperties": false,
+                "description": "Create the DNS records of the custom domain (certificate validation, routing). Records are DNS-only, never proxied. The API token comes from CLOUDFLARE_API_TOKEN."
               },
               "state": {
                 "description": "Remote state backend (Azure Blob Storage), created by --bootstrap-state.",

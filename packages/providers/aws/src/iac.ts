@@ -161,6 +161,14 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
         );
       }
 
+      if (target.dns !== undefined) {
+        throw new SforgeError(
+          ErrorCode.Unsupported,
+          `targets.${input.targetName}.dns is not supported for AWS targets yet`,
+          { hint: 'Use hostedZone (Route 53), or create the printed records yourself.' },
+        );
+      }
+
       const oidc =
         target.ci === undefined || outputsOnly ? undefined : await chooseOidcProvider(clients, id);
       const headers = securityHeaders(input.config);

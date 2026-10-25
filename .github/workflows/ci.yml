@@ -87,10 +87,10 @@ jobs:
           tofu_version: 1.13.1
           tofu_wrapper: false
       - name: Format
-        run: tofu fmt -check -recursive -diff packages/providers/aws/terraform packages/providers/azure/terraform
+        run: tofu fmt -check -recursive -diff packages/providers/aws/terraform packages/providers/azure/terraform packages/providers/cloudflare/terraform
       - name: Module tests (mocked clouds)
         run: |
-          for dir in packages/providers/aws/terraform/modules/site packages/providers/aws/terraform/state-bootstrap packages/providers/azure/terraform/modules/site packages/providers/azure/terraform/state-bootstrap; do
+          for dir in packages/providers/aws/terraform/modules/site packages/providers/aws/terraform/state-bootstrap packages/providers/azure/terraform/modules/site packages/providers/azure/terraform/state-bootstrap packages/providers/cloudflare/terraform/modules/records; do
             (cd "$dir" && tofu init -backend=false -input=false && tofu test)
           done
       - name: Validate the generated workspaces

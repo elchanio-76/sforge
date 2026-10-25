@@ -33,6 +33,21 @@ const ciSchema = z.strictObject({
     .describe('Allow pull_request workflows to deploy previews.'),
 });
 
+/** DNS records for the custom domain, managed by sforge in this DNS provider. */
+const dnsSchema = z
+  .strictObject({
+    provider: z.literal('cloudflare'),
+    zone: hostname.describe('The DNS zone (domain) that holds the records, e.g. "example.com".'),
+    zoneId: z
+      .string()
+      .regex(/^[0-9a-f]{32}$/, 'must be a 32-character Cloudflare zone ID')
+      .optional()
+      .describe('Zone ID. Defaults to a lookup of the zone by name (needs Zone Read).'),
+  })
+  .describe(
+    'Create the DNS records of the custom domain (certificate validation, routing). Records are DNS-only, never proxied. The API token comes from CLOUDFLARE_API_TOKEN.',
+  );
+
 const awsTargetSchema = z.strictObject({
   provider: z.literal('aws'),
   region: z
@@ -41,7 +56,8 @@ const awsTargetSchema = z.strictObject({
   domain: hostname.optional().describe('Custom domain. Omit to use the *.cloudfront.net URL.'),
   hostedZone: hostname
     .optional()
-    .describe('Route 53 hosted zone for automatic DNS validation and alias records.'),
+    .describe('Route 53 hosted zone for automatic DNS validation and alias records. Not with dns.'),
+  dns: dnsSchema.optional(),
   previewDomain: hostname
     .optional()
     .describe(
@@ -97,11 +113,10 @@ const azureTargetSchema = z.strictObject({
     .max(100)
     .default(10)
     .describe('Deployed versions kept in the history that rollback chooses from.'),
-  domain: hostname.optional(),
-  dnsZone: z
-    .string()
+  domain: hostname
     .optional()
-    .describe('Azure DNS zone resource ID for automatic CNAME records.'),
+    .describe('Custom domain (not the zone apex). Omit to use the *.azurestaticapps.net URL.'),
+  dns: dnsSchema.optional(),
   state: z
     .strictObject({
       resourceGroup: z.string().min(1).max(90).optional().describe('Defaults to "sforge-state".'),
@@ -319,6 +334,7 @@ export type SforgeConfigInput = z.input<typeof configSchema>;
 export type TargetConfig = z.output<typeof targetSchema>;
 export type AwsTargetConfig = Extract<TargetConfig, { provider: 'aws' }>;
 export type AzureTargetConfig = Extract<TargetConfig, { provider: 'azure' }>;
+export type DnsConfig = z.output<typeof dnsSchema>;
 
 /** Identity helper giving editor completion and type checking in `staticforge.config.ts`. */
 export function defineConfig(config: SforgeConfigInput): SforgeConfigInput {

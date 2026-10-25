@@ -171,10 +171,7 @@ describe('Azure IaC profile', () => {
 
   it.each([
     ['domain', { domain: 'www.example.com' }],
-    [
-      'dnsZone',
-      { dnsZone: '/subscriptions/x/resourceGroups/y/providers/Microsoft.Network/dnszones/z' },
-    ],
+    ['dns', { dns: { provider: 'cloudflare', zone: 'example.com' } }],
     ['ci', { ci: { repo: 'acme/docs' } }],
   ])('says %s arrives with milestone M9', async (_option, target) => {
     const { profile, request } = input(fakeAzure(), target);

@@ -1,3 +1,4 @@
+export * from './dns.js';
 export * from './download.js';
 export * from './engine.js';
 export * from './operations.js';

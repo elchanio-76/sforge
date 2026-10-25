@@ -35,6 +35,9 @@
       "path": "packages/providers/azure"
     },
     {
+      "path": "packages/providers/cloudflare"
+    },
+    {
       "path": "packages/dev-server"
     },
     {

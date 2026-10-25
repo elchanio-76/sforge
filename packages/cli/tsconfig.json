@@ -27,6 +27,9 @@
     },
     {
       "path": "../providers/aws"
+    },
+    {
+      "path": "../providers/cloudflare"
     }
   ]
 }

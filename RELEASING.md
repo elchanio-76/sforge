@@ -22,7 +22,7 @@ together, with the same version.
 
    npm can only set up trusted publishing for packages that exist.
 
-3. For each of the 14 packages, on npmjs.com → the package → Settings → Trusted publishing, add a
+3. For each of the 15 packages, on npmjs.com → the package → Settings → Trusted publishing, add a
    GitHub Actions publisher: repository `elchanio-76/sforge`, workflow `release.yml`, environment
    `npm`, and under Allowed actions tick **npm publish**. New entries only allow staged
    publishing, where every package waits for a manual approval. Then disallow token-based
@@ -36,6 +36,19 @@ together, with the same version.
    required reviewers if releases should be approved. The repository must be public: npm only
    accepts provenance from public repositories, and a private one fails with
    `422 … Unsupported GitHub Actions source repository visibility`.
+
+## Adding a package
+
+npm can only set up trusted publishing for a package that exists, so a new `@staticforge/*`
+package (such as `@staticforge/cloudflare`, added in 0.2.0) is published once from your machine
+before the release that first includes it, then set up as in step 3:
+
+```sh
+pnpm build
+cd packages/providers/<package> && pnpm publish --access public --no-git-checks
+```
+
+That first version carries no provenance; every later one comes from the release workflow.
 
 ## Every release
 

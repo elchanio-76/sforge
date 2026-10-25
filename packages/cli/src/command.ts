@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
-import { ExitCode, ErrorCode, toSforgeError } from '@staticforge/core';
+import { type DnsConfig, ExitCode, ErrorCode, toSforgeError } from '@staticforge/core';
+import type { DnsProfile } from '@staticforge/iac';
 import type { Provider } from '@staticforge/provider-api';
 import { type CommandContext, createContext } from './context.js';
 import type { Io } from './io.js';
@@ -11,6 +12,8 @@ export interface Runtime {
   exitCode: ExitCode;
   /** Cloud providers to use instead of the real ones (tests). */
   providers?: Partial<Record<Provider['id'], Provider>>;
+  /** DNS providers to use instead of the real ones (tests). */
+  dns?: Partial<Record<DnsConfig['provider'], DnsProfile>>;
   /**
    * Receives every command's outcome, in --json mode or not, before a
    * long-running command starts waiting (in-process callers: the MCP server).
