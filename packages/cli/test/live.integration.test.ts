@@ -13,9 +13,35 @@ import { run } from '../src/main.js';
  * rollback → destroy. Creates real (cheap) resources, so it only runs with
  * SFORGE_LIVE=aws|azure and SFORGE_LIVE_CONFIRM set to the account or
  * subscription id it will use (`pnpm test:live`; see docs/content/deploy.md).
+ *
+ * With SFORGE_LIVE_DOMAIN (a parent such as aws.sforge.example.com) and
+ * SFORGE_LIVE_DNS_ZONE (its Cloudflare zone), the target gets the custom domain
+ * t-<id>.<parent> with records in Cloudflare (CLOUDFLARE_API_TOKEN), and on AWS
+ * previews on *.p-<id>.<parent>.
  */
 const provider = process.env.SFORGE_LIVE as 'aws' | 'azure' | undefined;
+const parentDomain = process.env.SFORGE_LIVE_DOMAIN;
+const dnsZone = process.env.SFORGE_LIVE_DNS_ZONE;
 const MINUTE = 60_000;
+
+/** Cloudflare records whose name contains `text`, read with the API token sforge uses. */
+async function cloudflareRecords(zone: string, text: string): Promise<string[]> {
+  const api = async (path: string) => {
+    const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+      headers: { authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN ?? ''}` },
+    });
+    const body = (await response.json()) as { success: boolean; result: unknown };
+    if (!body.success) throw new Error(`Cloudflare ${path}: ${JSON.stringify(body)}`);
+    return body.result;
+  };
+  const [found] = (await api(`/zones?name=${zone}`)) as { id: string }[];
+  if (found === undefined) throw new Error(`No Cloudflare zone ${zone}`);
+  const records = (await api(`/zones/${found.id}/dns_records?per_page=1000`)) as {
+    name: string;
+    type: string;
+  }[];
+  return records.filter((r) => r.name.includes(text)).map((r) => `${r.name} ${r.type}`);
+}
 
 async function cloudAccount(): Promise<string> {
   if (provider === 'azure') {
@@ -93,9 +119,21 @@ const commit = (cwd: string, message: string) => {
   );
 };
 
-describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 * MINUTE }, () => {
+describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 75 * MINUTE }, () => {
   const id = Math.random().toString(36).slice(2, 8);
   const target = 'live';
+  // Custom domains (SFORGE_LIVE_DOMAIN): new names, so no earlier run's records get in the way.
+  const domain = parentDomain === undefined ? undefined : `t-${id}.${parentDomain}`;
+  const previewDomain =
+    parentDomain === undefined || provider !== 'aws' ? undefined : `p-${id}.${parentDomain}`;
+  const custom =
+    domain === undefined
+      ? {}
+      : {
+          domain,
+          ...(previewDomain !== undefined && { previewDomain }),
+          dns: { provider: 'cloudflare', zone: dnsZone },
+        };
   let dir = '';
   let url = '';
   let provisioned = false;
@@ -106,6 +144,11 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
       throw new Error(
         `This test creates and destroys resources in ${provider} account ${account}. ` +
           `Set SFORGE_LIVE_CONFIRM=${account} to run it.`,
+      );
+    }
+    if (domain !== undefined && (dnsZone === undefined || !process.env.CLOUDFLARE_API_TOKEN)) {
+      throw new Error(
+        'SFORGE_LIVE_DOMAIN needs SFORGE_LIVE_DNS_ZONE (its Cloudflare zone) and CLOUDFLARE_API_TOKEN.',
       );
     }
     // Outside the per-run temp root (vitest.global-setup.ts), which is deleted when the run
@@ -125,13 +168,18 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
         targets: {
           [target]:
             provider === 'aws'
-              ? { provider: 'aws', region: process.env.SFORGE_LIVE_REGION ?? 'eu-north-1' }
+              ? {
+                  provider: 'aws',
+                  region: process.env.SFORGE_LIVE_REGION ?? 'eu-north-1',
+                  ...custom,
+                }
               : {
                   provider: 'azure',
                   resourceGroup: `rg-sforge-live-${id}`,
                   location: 'eastus2',
                   sku: 'Free',
                   state: { location: 'northeurope' },
+                  ...custom,
                 },
         },
       }),
@@ -158,6 +206,10 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
       );
       throw error;
     }
+    if (domain !== undefined && dnsZone !== undefined) {
+      // Destroy removes the validation and routing records it created.
+      expect(await cloudflareRecords(dnsZone, id)).toEqual([]);
+    }
     rmSync(dir, { recursive: true, force: true });
   }, 30 * MINUTE);
 
@@ -166,6 +218,16 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
     const result = await sforge(dir, 'provision', target, '--bootstrap-state', '--yes');
     expect(result.applied).toBe(true);
     url = String(result.outputs.url).replace(/\/$/, '');
+    if (domain !== undefined && dnsZone !== undefined) {
+      expect(url).toBe(`https://${domain}`);
+      const records = await cloudflareRecords(dnsZone, id);
+      expect(records).toContain(`${domain} CNAME`);
+      if (provider === 'aws') {
+        // Certificate validation for the domain and the preview wildcard, and the wildcard itself.
+        expect(records).toContain(`*.${previewDomain} CNAME`);
+        expect(records.filter((r) => r.startsWith('_'))).toHaveLength(2);
+      }
+    }
     const plan = await sforge(dir, 'provision', target, '--diff');
     expect(plan.plan.changes).toBe(false);
     // The IaC workspace is meant to be committed (docs/content/deploy.md).
@@ -176,12 +238,22 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
     const first = await sforge(dir, 'deploy', target, '--no-headless');
     expect(first.dryRun).toBe(false);
 
-    const home = await eventually(async () => {
-      const response = await fetch(`${url}/`);
-      if (response.status !== 200) throw new Error(`GET / → ${response.status}`);
-      return response;
-    });
-    expect(await home.text()).toContain('<html lang="en"');
+    // A new custom domain may need a while: DNS, and on Azure the managed certificate.
+    // fetch verifies the certificate, so this also checks it covers the domain.
+    const home = await eventually(
+      async () => {
+        const response = await fetch(`${url}/`);
+        if (response.status !== 200) throw new Error(`GET / → ${response.status}`);
+        return response;
+      },
+      domain === undefined ? 2 * MINUTE : 15 * MINUTE,
+    );
+    const html = await home.text();
+    expect(html).toContain('<html lang="en"');
+    if (domain !== undefined) {
+      // Production builds use the target's domain, not site.baseUrl.
+      expect(html).toContain(`<link rel="canonical" href="https://${domain}/"`);
+    }
     expect(home.headers.get('strict-transport-security')).toMatch(/max-age=\d+/);
     expect(home.headers.get('content-security-policy')).toContain("default-src 'self'");
     expect(home.headers.get('x-content-type-options')).toBe('nosniff');
@@ -236,6 +308,30 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
       if (text.includes(`Live marker ${id}`)) throw new Error('the rollback is not live yet');
     }, 10 * MINUTE);
   });
+
+  it.runIf(previewDomain !== undefined)(
+    'deploys and removes a preview on its own host',
+    async () => {
+      const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');
+      const previewUrl = `https://pr-1.${previewDomain}`;
+      expect(String(preview.url).replace(/\/$/, '')).toBe(previewUrl);
+      const html = await eventually(async () => {
+        const response = await fetch(`${previewUrl}/`);
+        if (response.status !== 200) throw new Error(`preview → ${response.status}`);
+        return response.text();
+      }, 10 * MINUTE);
+      expect(html).toContain(`<link rel="canonical" href="${previewUrl}/"`);
+      // Production is unaffected.
+      expect(await (await fetch(`${url}/`)).text()).not.toContain(previewUrl);
+
+      const removed = await sforge(dir, 'preview-destroy', target, 'pr-1');
+      expect(removed.existed).toBe(true);
+      await eventually(async () => {
+        const status = (await fetch(`${previewUrl}/`)).status;
+        if (status !== 404) throw new Error(`removed preview → ${status}`);
+      });
+    },
+  );
 
   it.runIf(provider === 'azure')('deploys and removes a preview environment', async () => {
     const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');

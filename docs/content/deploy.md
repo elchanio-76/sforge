@@ -456,3 +456,18 @@ SFORGE_LIVE=azure SFORGE_LIVE_CONFIRM=<subscription id> pnpm test:live   # eastu
 
 Provisioning CloudFront takes several minutes, so an AWS run takes about 10–20 minutes. Run it
 in a sandbox account or subscription.
+
+To test custom domains too, name a parent domain in a Cloudflare zone; the token is the one
+`dns` uses ([DNS records in Cloudflare](#dns-records-in-cloudflare)):
+
+```sh
+SFORGE_LIVE_DOMAIN=aws.sforge.example.com SFORGE_LIVE_DNS_ZONE=example.com \
+  SFORGE_LIVE=aws SFORGE_LIVE_CONFIRM=<account id> pnpm test:live
+```
+
+The target then gets the domain `t-<run id>.<parent>` (and on AWS previews on
+`*.p-<run id>.<parent>`), so runs never collide with each other or with a site on the parent
+itself. The test checks that the records are created, that the site is served over HTTPS on the
+domain with a valid certificate and canonical URLs on it, on AWS that a preview is served on
+`pr-1.p-<run id>.<parent>` and removed, and after `destroy` that no record with the run id is
+left. Allow 30–60 minutes: certificates and, on Azure, domain validation take a while.

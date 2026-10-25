@@ -445,6 +445,8 @@ Production builds for a target with `domain` use `https://<domain>/` (canonical 
 - **Release**: `scripts/publish.mjs` and `release.yml` publish prerelease versions (`x.y.z-rc.N`) under dist-tag `next`, which npm requires for prereleases.
 
 ### G. Live tests (`packages/cli/test/live.integration.test.ts`)
+**Code done (2026-10-25); not run yet.** As outlined below: `SFORGE_LIVE_DOMAIN` + `SFORGE_LIVE_DNS_ZONE` (both required together, plus `CLOUDFLARE_API_TOKEN`) give the target `t-<id>.<parent>` and on AWS `previewDomain: p-<id>.<parent>`. Added checks: the `url` output is the domain, the Cloudflare records exist (on AWS the domain and wildcard CNAMEs and two validation records), the first fetch waits up to 15 minutes (DNS and certificates; `fetch` verifies the certificate), the canonical link uses the domain, an AWS preview on `pr-1.p-<id>.<parent>` serves its own canonical URLs and returns 404 after `preview-destroy`, and after `destroy` no record containing the run id is left (listed through the Cloudflare API). The suite timeout is 75 minutes per test. The listing call was smoke-tested read-only against the real zone.
+
 - **Opt-in**: `SFORGE_LIVE_DOMAIN=aws.sforge.elchanio-76.eu` (or the Azure one) plus `SFORGE_LIVE_DNS_ZONE=elchanio-76.eu` and `CLOUDFLARE_API_TOKEN`.
 - The target gets `domain: t-<rand>.<parent>`. AWS also gets `previewDomain: p-<rand>.<parent>`.
 - Checks:
