@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Writable } from 'node:stream';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Io } from '../src/io.js';
@@ -79,6 +79,19 @@ async function eventually<T>(fn: () => Promise<T>, timeoutMs = 2 * MINUTE): Prom
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const commit = (cwd: string, message: string) => {
+  git(cwd, 'add', '-A');
+  git(
+    cwd,
+    '-c',
+    'user.name=sforge',
+    '-c',
+    'user.email=sforge@example.com',
+    'commit',
+    '-qm',
+    message,
+  );
+};
 
 describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 * MINUTE }, () => {
   const id = Math.random().toString(36).slice(2, 8);
@@ -95,7 +108,9 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
           `Set SFORGE_LIVE_CONFIRM=${account} to run it.`,
       );
     }
-    dir = mkdtempSync(join(tmpdir(), `sforge-live-${id}-`));
+    // Outside the per-run temp root (vitest.global-setup.ts), which is deleted when the run
+    // ends: if destroy fails, the project is still there to destroy from.
+    dir = mkdtempSync(join(dirname(tmpdir()), `sforge-live-${id}-`));
     const example = new URL('../../../examples/basic-site/', import.meta.url).pathname;
     for (const part of ['content', 'assets', 'static'])
       cpSync(join(example, part), join(dir, part), { recursive: true });
@@ -121,20 +136,16 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
         },
       }),
     );
-    // Versions record their commit; Azure rolls back by rebuilding it.
-    git(dir, 'init', '-q');
-    git(dir, 'add', '.');
-    git(
-      dir,
-      '-c',
-      'user.name=sforge',
-      '-c',
-      'user.email=sforge@example.com',
-      'commit',
-      '-qm',
-      'v1',
+    // As `sforge init` writes it.
+    writeFileSync(
+      join(dir, '.gitignore'),
+      'node_modules/\ndist/\n.sforge/cache/\n.sforge/state/\n.sforge/iac/**/.terraform/\n',
     );
-  });
+    // Versions record their commit; Azure rolls back by rebuilding it, but only from a
+    // clean checkout.
+    git(dir, 'init', '-q');
+    commit(dir, 'v1');
+  }, 5 * MINUTE);
 
   afterAll(async () => {
     if (!provisioned) return;
@@ -147,7 +158,8 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
       );
       throw error;
     }
-  });
+    rmSync(dir, { recursive: true, force: true });
+  }, 30 * MINUTE);
 
   it('provisions, with a remote state backend, and then has nothing to change', async () => {
     provisioned = true; // even a failed apply may have created something
@@ -156,6 +168,8 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
     url = String(result.outputs.url).replace(/\/$/, '');
     const plan = await sforge(dir, 'provision', target, '--diff');
     expect(plan.plan.changes).toBe(false);
+    // The IaC workspace is meant to be committed (docs/content/deploy.md).
+    commit(dir, 'Provision');
   });
 
   it('deploys, and serves the site with production URL semantics and headers', async () => {
@@ -200,16 +214,7 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 45 *
   it('deploys a change, keeps the infrastructure free of drift, and rolls back', async () => {
     const about = join(dir, 'content', 'about.md');
     writeFileSync(about, `${readFileSync(about, 'utf8')}\n\nLive marker ${id}.\n`);
-    git(
-      dir,
-      '-c',
-      'user.name=sforge',
-      '-c',
-      'user.email=sforge@example.com',
-      'commit',
-      '-qam',
-      'v2',
-    );
+    commit(dir, 'v2');
 
     const second = await sforge(dir, 'deploy', target, '--no-headless');
     if (provider === 'aws') expect(second.copied).toBeGreaterThan(0);
