@@ -8,7 +8,8 @@ learned the hard way. It does not repeat what lives elsewhere:
   envelope, `SF_*` error codes, exit codes, non-interactive rules) and the command list.
 - [PLAN.md](PLAN.md): the living design document. §1–§14 describe the design per package, §15
   the milestones (M0–M9 done; 0.2.0 released), §16 end-to-end verification, §17 the M9 plan with
-  "Done / As built / Found and fixed" notes per step.
+  "Done / As built / Found and fixed" notes per step, §18 the M10 plan (private sites) and §19 the
+  M11 plan (Firebase Hosting).
 - [RELEASING.md](RELEASING.md): npm trusted publishing, adding a package, every release.
 - `docs/content/*.md`: user docs (a staticforge site): `deploy.md` (AWS, Azure, Cloudflare DNS,
   remote state, live tests), `ci.md` (`sforge ci init`, OIDC subjects), `checker.md`, `mcp.md`.

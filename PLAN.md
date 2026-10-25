@@ -321,6 +321,8 @@ User documentation: `docs/content/ci.md`. `sforge ci init [--targets a,b] [--pac
     8. Docs: README (install, development commands), `docs/content/content.md` (wide tables, large sites), `themes.md` (scrollable content in the accessibility contract, `build.time` under dev), `deploy.md` (live tests), `RELEASING.md`.
 
 11. **M9 Custom domains + GitHub Actions deploys** ✅ (released as 0.2.0 on 2026-10-25; plan approved the same day, details in §17): Cloudflare-managed DNS records through a new `dns` target option (`@staticforge/cloudflare`), custom domains `aws.sforge.elchanio-76.eu` (previews on `pr-N.preview.aws.sforge.elchanio-76.eu`) and `azure.sforge.elchanio-76.eu`, the Azure `ci-oidc` identity, per-target base URLs, `sforge ci init`, opt-in domain live tests, and the GitHub flow verified in the test repository `elchanio-76/sforge-ci-test` against `0.2.0-rc.2` (dist-tag `next`; immutable OIDC subjects, previews marked noindex and three CI fixes found there). The test repository's resources were destroyed after the user checked both sites.
+12. **M10 Private sites** (planned 2026-10-26, details in §18; release 0.3.0): `targets.<n>.auth` makes a target require sign-in on every URL (AWS: Cognito user pool, session cookie checked by the router function, a regional Lambda for sign-in; Azure Free: preconfigured providers and invited users in the `member` role), `sforge users list|invite|remove|revoke-sessions`, and `privateDns` (validation records public, the site's records printed for internal DNS).
+13. **M11 Firebase Hosting** (planned 2026-10-26, details in §19; release 0.4.0): a third provider, `@staticforge/firebase` (package 16), public sites only: Blaze plan within the free quotas in an existing project, GCS state, Hosting REST API deployer with native preview channels and release-based rollback, Workload Identity Federation for CI, custom domains through Cloudflare.
 
 ## 16. Verification (end to end)
 1. `pnpm -r test` (unit + snapshot + checker fixtures) plus `tofu test` for the HCL modules and `pnpm -r typecheck`.
@@ -500,3 +502,115 @@ Production builds for a target with `domain` use `https://<domain>/` (canonical 
 ### Not in M9
 - Hosting the docs site (M8 deferred it here). I'd suggest `docs.sforge.elchanio-76.eu` as a follow-up once the CI flow is proven.
 - Azure apex domains (`dns-txt-token`), Azure DNS zones, and Cloudflare proxying.
+
+## 18. M10 plan: private sites (AWS + Azure)
+
+### Context
+sforge publishes only public sites. A target should be able to require sign-in on every URL, with its custom domain in a public zone or in a private zone on a company network reached over VPN. sforge manages user authentication only, never the network. Firebase Hosting, the other feature planned the same day, follows in M11 (§19).
+
+Decisions (made with the user, 2026-10-26):
+- **Azure: Free plan only.** Preconfigured SWA providers (Entra ID `aad`, optionally GitHub). Access is a custom role `member` given through SWA invitations, at most 25 users per app. Restricting sign-in to one tenant, groups, or a custom OIDC provider (including Entra External ID) needs the Standard plan and is left out.
+- **AWS: users live in a Cognito user pool.** sforge invites them by email, lists and removes them. Self sign-up is off; no federation (Cognito's free tier covers 10,000 MAU in the pool, but only 50 federated).
+- **Scope: the whole target.** A target is public or private; a private target protects every URL (pages, assets, search index, sitemap, the 404 page).
+- **Private DNS: records printed for the company's DNS admins.** CloudFront (ACM) and SWA validate custom domains over public DNS, so validation records go in the public parent zone (through `dns`, or printed) and the site's CNAME is printed for internal DNS (AD DNS, Infoblox, …), never published. Route 53 and Azure private zones are not managed. The site stays reachable through its `*.cloudfront.net` / `*.azurestaticapps.net` host, so sign-in is the real protection.
+- **Verification:** AWS live tests sign in headlessly as a throwaway Cognito user; Azure sign-in (a real Microsoft or GitHub account with MFA) is checked by the user once.
+
+### A. Config (`packages/core/src/config/schema.ts`)
+- `targets.<n>.auth`: its presence makes the target private. Per provider:
+  - **AWS:** `{ sessionHours?: 1–24 (default 8), mfa?: 'off'|'optional'|'required' (TOTP, default 'optional'), allowCloudFrontHost?: false }`.
+  - **Azure:** `{ providers?: ('aad'|'github')[] (default ['aad']) }`. The role is always `member`.
+- `targets.<n>.privateDns: true` (both providers, requires `domain`): the public zone gets only validation records; the site's records go to a new output, `dns_private_records`, which `provision`, `status` and `--json` show as records to add to internal DNS. Independent of `auth`; without `auth`, `provision` warns that the default host stays reachable.
+- Private targets build with `noindex` (the build option previews use).
+- `pnpm schema:generate`.
+
+### B. AWS (`packages/providers/aws`)
+No Lambda@Edge, and every part fits a free tier: the existing **router CloudFront Function** checks a signed session cookie on every request, and a small **regional Lambda** runs only during sign-in.
+- **HCL `modules/site/auth.tf`** (count on `var.auth != null`):
+  - `aws_cognito_user_pool` (Essentials tier, admin-create-only, email as username, invitation template naming the site, TOTP MFA per `mfa`, password policy), `aws_cognito_user_pool_domain` (prefix domain, managed login v2), `aws_cognito_managed_login_branding` (default style), `aws_cognito_user_pool_client` (public client with PKCE and no secret, code flow, scopes `openid email`, callback and logout URLs on `https://<domain>/_sforge/auth/…`, or the `cloudfront.net` host without a domain).
+  - Sign-in Lambda (`auth-lambda/`, plain JS in the module, zipped by the `archive` provider): Node 24, arm64, 128 MB; a function URL with `AWS_IAM` auth behind a CloudFront OAC of type `lambda`; an `ordered_cache_behavior` for `/_sforge/auth/*` (CachingDisabled, origin request policy forwarding query strings and cookies). Its role reads the KVS only.
+  - Session key: KVS keys `auth:key` and `auth:kid`, seeded `none` with `ignore_changes` like `active`. The key never enters state: a new `PreparedTarget.postApply` hook generates 32 random bytes through the SDK when it is `none`.
+- **`router.js`** (with `auth` in the substituted config):
+  - Verifies `__Host-sforge_session` before routing: `base64url(payload).hmac`, HMAC-SHA256 (available in CloudFront Functions), payload `{ sub, email, exp, host }`, key from the KVS.
+  - Missing or invalid → 302 to `https://<domain>/_sforge/auth/login?return=<url>`, also for `/_sforge/errors/404.html` (CloudFront's own error-page fetch bypasses the function, so signed-in users still get 404 pages).
+  - `/_sforge/session?t=…` (previews): checks a 60-second handoff token bound to the host and sets the host's cookie.
+  - With a domain, the `cloudfront.net` host gets a 301 to the domain.
+  - Functions are limited to 10 KB (the router is 5 KB with comments); minify at substitution time if needed.
+- **The Lambda:** `login` (state and PKCE verifier in a short signed cookie, redirect to Cognito `/oauth2/authorize`); `callback` (checks state, exchanges the code, verifies the ID token's issuer, audience and `token_use` against the JWKS, sets the session cookie, redirects to `return`, which must be the domain or a preview host; for a preview host it redirects through `https://pr-N.<previewDomain>/_sforge/session?t=…`, so one callback URL serves every preview, as Cognito allows no wildcard callbacks); `logout` (clears the cookie, then Cognito's `/logout`).
+- **Caching:** the cache key stays the versioned URI; the viewer-request check runs before the cache. Private targets deploy `revalidate` files with `Cache-Control: private, max-age=0, must-revalidate`.
+- **Users** (`src/users.ts`): `AdminCreateUser` (Cognito emails a temporary password; its default sender allows 50 emails a day, documented), `ListUsers`, `AdminDeleteUser` + `AdminUserGlobalSignOut`. A removed user keeps access until the cookie expires (at most `sessionHours`); `sforge users revoke-sessions` rotates the key and signs everyone out.
+- **`privateDns`:** only the `dns_validation` records module; the domain and wildcard CNAMEs go to `dns_private_records`.
+- The CI role is unchanged: deploys never touch Cognito.
+
+### C. Azure (`packages/providers/azure`)
+- **`swa-config.ts`** with `auth`: auth routes first, counted in the 20 KB budget: blocked providers → `statusCode: 404`; `/_sforge/denied.html` → `allowedRoles: ['authenticated']`; `/*` → `allowedRoles: ['member']`. **Every generated route (search CSP, immutable cache) also carries `allowedRoles: ['member']`**: SWA applies only the first matching route, so a header route without roles would bypass auth. `responseOverrides`: 401 → 302 to `/.auth/login/<first provider>?post_login_redirect_uri=.referrer`; 403 → rewrite to `/_sforge/denied.html`, a small accessible page with sign-out that the deployer adds.
+- **Users:** invite with `createUserRolesInvitationLink` (role `member`, provider, email for `aad` or username for GitHub, `--expires` 1–168 hours, default 168; SWA sends no email, so sforge prints the link), list with `listStaticSiteUsers` filtered to `member`, remove with `updateStaticSiteUser` (empty role) or `deleteStaticSiteUser`. The 25-user limit is checked before inviting.
+- **`privateDns`:** the custom domain uses `validation_type = "dns-txt-token"`; the `_dnsauth.<label>` TXT record goes public (Cloudflare) or is printed; the pre-phase waits for the TXT record instead of the CNAME (`waitForCname` generalized to `waitForRecord`); the CNAME goes to `dns_private_records`.
+- The `ci-oidc` custom role is unchanged.
+
+### D. Shared plumbing
+- IaC layer: `PreparedTarget.postApply(outputs)`, run after a successful apply.
+- Cloudflare `records` module: TXT records (also needed in M11).
+- `provider-api`: optional `Provider.users?: UserAdmin { list, invite, remove, revokeSessions? }`.
+- CLI: `sforge users list|invite|remove|revoke-sessions <target> […]` with `--json` schemas; `remove` and `revoke-sessions` need `--yes`; `SF_UNSUPPORTED` without `auth`. Run with the admin sign-in, never from CI. `provision` shows the sign-in URL and the private records.
+- MCP: `sforge_users_list` (read-only), `sforge_users_invite` and `sforge_users_remove` (need `confirm: true`).
+- `ci init`: unchanged; previews of private AWS targets work through the handoff.
+
+### E. Tests, live verification, docs, release
+- Unit: the router with auth (valid, expired, wrong-host and forged cookies, handoff, redirect, the 404 path), the Lambda handlers (mocked token endpoint and JWKS), the SWA config (every route has `allowedRoles`, the budget holds), the users APIs (`aws-sdk-client-mock`, fake Azure clients), schema rules.
+- `tofu test`: auth resources, `privateDns` without routing records, Azure TXT validation; `pnpm test:iac`.
+- Live (`SFORGE_LIVE_AUTH=1`, asked before every run):
+  - AWS: anonymous → 302 to login; in Chromium (playwright-core) a test user (`AdminCreateUser` + `AdminSetUserPassword --permanent`) signs in through managed login, pages and assets load, a preview loads through the handoff, sign-out works. With `privateDns`: no public routing record (Cloudflare MCP), and the certificate is valid when fetched with the CloudFront address forced (custom `lookup`).
+  - Azure: anonymous → 302 to `/.auth/login/aad`, every route of the served config has `allowedRoles`; then by hand (the user): an invited account gets in, a second account sees the denied page, previews too. With `privateDns`: TXT validation and the certificate.
+- Docs: new `docs/content/private-sites.md` (users, sessions and revocation, limits, the private DNS split horizon, the reachable default host), `deploy.md`, `mcp.md`.
+- Release 0.3.0: rc on `next`, checked in `sforge-ci-test`, then final.
+
+### Order of work
+1. Config and schema (A), IaC `postApply` and TXT records (D).
+2. AWS (B): HCL, router, Lambda, users; unit and `tofu test`.
+3. Azure (C): SWA config, users, TXT validation.
+4. CLI `users` command, MCP tools, docs.
+5. Live tests (ask first): AWS, then Azure with the user's manual sign-in check.
+6. rc release, test repository, 0.3.0.
+
+## 19. M11 plan: Firebase Hosting (`@staticforge/firebase`, package 16)
+
+### Context
+A third provider, Firebase Hosting, for public sites. Decisions (made with the user, 2026-10-26):
+- **Blaze plan within the free quotas, in an existing project.** Since September 2024, Spark projects cannot use any Cloud Storage bucket, so the state (a GCS bucket in the project, like AWS and Azure) needs billing. The user creates the project, links billing and sets a budget alert; sforge does not create projects (global IDs, billing rights, a 30-day reuse block).
+- **Public only for now.** Firebase Hosting has no sign-in gate; a real one needs Cloud Run or Functions on every request, or IAP behind a load balancer. `auth` and `privateDns` get `SF_UNSUPPORTED`.
+- **Verification** in a new GCP sandbox project, with the domain `firebase.sforge.elchanio-76.eu`.
+
+### A. Config
+`{ provider: 'firebase', project, site? (default derived from the project name; globally unique, ≤ 30 characters), domain?, dns?, baseUrl?, retainVersions, previewTtlDays? (default 7), state?: { bucket?, location? (default 'EU') }, ci? }`.
+
+`'firebase'` is added everywhere `'aws' | 'azure'` is hard-coded: the schema union and its types, `providerFor` in `packages/cli/src/cloud.ts`, the enums in `packages/cli/src/schemas.ts`, `init --provider` and the starter target in `packages/build/src/scaffold.ts`, `packages/cli/src/commands/ci.ts` and `packages/cli/src/ci/workflows.ts`, the live tests, docs and `packages/cli/package.json`.
+
+### B. IaC
+- Backend: `IacBackend.type` gains `'gcs'` (native locking).
+- `state-bootstrap`: bucket `sforge-state-<project>` (uniform access, public access prevention enforced, versioning, soft delete, `prevent_destroy`); the caller gets `storage.objectAdmin`.
+- `modules/site` (`google` + `google-beta`): `google_project_service` for firebase, firebasehosting, iam, iamcredentials, sts, serviceusage (`disable_on_destroy = false`); `google_firebase_project`; `google_firebase_hosting_site`; with `domain`, `google_firebase_hosting_custom_domain` (beta, `cert_preference = GROUPED`).
+- DNS: the records Firebase wants (`required_dns_updates.desired`: TXT, A, or CNAME for subdomains, plus ACME TXT) are known only once the domain resource exists. A pre-phase applies the domain with `wait_dns_verification = false` and reads them; the full apply creates them through Cloudflare (the `records` module gains A/AAAA and several values per name) or prints them (`--no-wait`).
+- CI (`ci.tf`): a Workload Identity pool and GitHub OIDC provider whose `attribute_condition` pins `repository_id` (immutable subjects, see M9); a service account with `roles/firebasehosting.admin` on the project (Hosting has no per-site role; documented); `storage.objectUser` on the state bucket with an IAM condition on its own object prefixes; `workloadIdentityUser` for the branch, environment and pull-request principal sets. Outputs `ci_workload_identity_provider`, `ci_service_account`.
+
+### C. Deployer (Hosting REST API through `google-auth-library`; no `firebase-tools`)
+- Deploy: create a version whose config carries the `security` headers, cache classes as globs from the manifest, `cleanUrls`/`trailingSlash` from `build`, and the search CSP on `/search` and `/pagefind`; `populateFiles` with the SHA-256 of each gzipped file; upload only the missing ones (16 at a time); finalize; release on `live`, labelled with the version id `<UTC>-<sha>`.
+- Previews: channel `pr-N` with TTL `previewTtlDays`; `previewBaseUrl` creates or reads the channel so the build gets its URL (`<site>--pr-N-<hash>.web.app`); `preview-destroy` deletes it.
+- Versions and rollback: Firebase's own release history. `versions` lists releases; rollback releases the earlier version (seconds, no rebuild); `retainVersions` sets the site's `maxVersions`. No `versions.json`.
+- 404: Firebase serves `404.html` itself.
+- URL semantics: compared live with `resolveRequest` for both `trailingSlash` modes; differences documented.
+
+### D. CI and the rest
+- `ci init`: `google-github-actions/auth` in `actions.ts` and `scripts/ci-pins.mjs`; variables `SFORGE_<T>_WORKLOAD_IDENTITY_PROVIDER` and `SFORGE_<T>_SERVICE_ACCOUNT`; previews always available, as on Azure.
+- Docs: Firebase in `deploy.md`, `ci.md`, README, RELEASING (the new package's first publish is by hand, then its trusted-publisher entry).
+
+### E. Prerequisites (the user)
+- A new GCP project with billing linked and a budget alert.
+- The gcloud CLI, `gcloud auth application-default login`, Owner on the project.
+- The existing Cloudflare token already covers TXT and A records.
+
+### F. Verification
+- Unit: the deployer against a fake Hosting API (hashing, partial uploads, channels, rollback), config, `ci init` for Firebase (output through actionlint).
+- `tofu test` for the site, state-bootstrap and CI modules; `pnpm test:iac` with both engines.
+- Live (`SFORGE_LIVE=firebase SFORGE_LIVE_CONFIRM=<project id>`, asked before every run): bootstrap, provision, two deploys, HTTP checks (headers, redirects, 404, `.sforge/` hidden), a preview channel and its removal, rollback, destroy. Domain mode on `t-<id>.firebase.sforge.elchanio-76.eu`. Site IDs get a random suffix (deleted IDs are not immediately reusable).
+- `sforge-ci-test`: a Firebase target, then the PR, merge, close and rollback flow.
+- `pnpm test:pack` (16 packages), then 0.4.0 (rc first).
