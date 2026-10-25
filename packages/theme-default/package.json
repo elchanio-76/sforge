@@ -1,6 +1,6 @@
 {
   "name": "@staticforge/theme-default",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.0",
   "description": "Accessible default theme for staticforge",
   "keywords": [
     "staticforge",
