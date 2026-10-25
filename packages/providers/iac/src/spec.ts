@@ -54,6 +54,8 @@ export interface IacSpec {
   additionalModules?: ModuleSpec[];
   /** Outputs of `module` re-exported as root outputs (and cached after apply). */
   outputs: string[];
+  /** Root outputs taken from other modules, e.g. `{ ci_client_id: iacRef('module.ci.client_id') }`. */
+  additionalOutputs?: Record<string, IacRef>;
   backend: IacBackend;
   /** Extra environment variables for the engine. */
   env?: Record<string, string>;

@@ -367,6 +367,24 @@ describe('workspaces with several modules', () => {
     expect(main.output.bucket).toEqual({ value: '${module.site.bucket}' });
   });
 
+  it('re-exports outputs of additional modules', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sforge-ws-'));
+    const records = moduleDir();
+    writeWorkspace({
+      dir,
+      spec: {
+        ...withRecords(moduleDir(), records),
+        additionalOutputs: { dns_fqdns: iacRef('module.dns_routing.fqdns') },
+      },
+    });
+    const main = JSON.parse(readFileSync(join(dir, 'main.tf.json'), 'utf8'));
+    expect(main.output).toEqual({
+      bucket: { value: '${module.site.bucket}' },
+      distribution_id: { value: '${module.site.distribution_id}' },
+      dns_fqdns: { value: '${module.dns_routing.fqdns}' },
+    });
+  });
+
   it('vendors every module and removes copies of modules no longer used', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sforge-ws-'));
     const module = moduleDir();

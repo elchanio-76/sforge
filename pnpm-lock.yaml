@@ -520,6 +520,10 @@ importers:
       '@staticforge/provider-api':
         specifier: workspace:*
         version: link:../provider-api
+    devDependencies:
+      '@staticforge/cloudflare':
+        specifier: workspace:*
+        version: link:../cloudflare
 
   packages/providers/cloudflare:
     dependencies:

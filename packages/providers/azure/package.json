@@ -51,5 +51,8 @@
     "@staticforge/core": "workspace:*",
     "@staticforge/iac": "workspace:*",
     "@staticforge/provider-api": "workspace:*"
+  },
+  "devDependencies": {
+    "@staticforge/cloudflare": "workspace:*"
   }
 }

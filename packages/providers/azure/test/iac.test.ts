@@ -3,11 +3,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ErrorCode, createLogger, validateConfig } from '@staticforge/core';
+import { RECORDS_MODULE_DIR, createCloudflareDns } from '@staticforge/cloudflare';
 import type { ProfileInput } from '@staticforge/iac';
-import { createAzureIacProfile, historyBlobName, stateLocation } from '../src/index.js';
+import {
+  CI_MODULE_DIR,
+  createAzureIacProfile,
+  describeCname,
+  historyBlobName,
+  stateLocation,
+} from '../src/index.js';
 import { SUBSCRIPTION, azureConfig, fakeAzure } from './fakes.js';
 
 const logger = createLogger({ level: 'silent' });
+const ZONE_ID = '9cb70fa80e764481efbd93d9cc565753';
 
 function input(
   azure = fakeAzure(),
@@ -169,15 +177,110 @@ describe('Azure IaC profile', () => {
     expect(azure.tokenCalls).toBe(0);
   });
 
+  it('creates the custom domain after its CNAME in Cloudflare', async () => {
+    const { profile, request } = input(
+      fakeAzure(),
+      {
+        domain: 'azure.docs.example.com',
+        dns: { provider: 'cloudflare', zone: 'example.com', zoneId: ZONE_ID },
+      },
+      { dns: createCloudflareDns(), env: { CLOUDFLARE_API_TOKEN: 'token' } },
+    );
+    const prepared = await profile.prepare(request);
+    expect(prepared.spec.module.inputs).toMatchObject({
+      domain: 'azure.docs.example.com',
+      dns_ready: { ref: 'module.dns_routing.ids' },
+    });
+    expect(prepared.spec.requiredProviders).toHaveProperty('cloudflare');
+    expect(prepared.spec.additionalModules).toEqual([
+      {
+        name: 'dns_routing',
+        dir: RECORDS_MODULE_DIR,
+        inputs: {
+          zone_id: ZONE_ID,
+          comment: 'staticforge docs-example-com/prod',
+          records: { ref: 'module.site.dns_routing_records' },
+        },
+      },
+    ]);
+    expect(prepared.prePhase).toBeUndefined();
+  });
+
+  it('prints the CNAME first when sforge does not manage the DNS', async () => {
+    const { profile, request } = input(fakeAzure(), { domain: 'www.example.com' });
+    const prepared = await profile.prepare(request);
+    expect(prepared.spec.module.inputs).toMatchObject({ domain: 'www.example.com' });
+    expect(prepared.spec.module.inputs).not.toHaveProperty('dns_ready');
+    expect(prepared.prePhase?.targets).toEqual(['module.site.azurerm_static_web_app.site']);
+    expect(
+      prepared.prePhase?.describe({
+        dns_records: [{ name: 'www.example.com', type: 'CNAME', value: 'x.azurestaticapps.net' }],
+      }),
+    ).toBe(
+      'Create this DNS record (provisioning waits until Azure has validated it):\n' +
+        '  www.example.com CNAME x.azurestaticapps.net',
+    );
+    expect(describeCname({ dns_records: [] })).toBeUndefined();
+  });
+
   it.each([
-    ['domain', { domain: 'www.example.com' }],
-    ['dns', { dns: { provider: 'cloudflare', zone: 'example.com' } }],
-    ['ci', { ci: { repo: 'acme/docs' } }],
-  ])('says %s arrives with milestone M9', async (_option, target) => {
-    const { profile, request } = input(fakeAzure(), target);
+    ['without a zone', { domain: 'example.com' }],
+    [
+      'equal to the zone',
+      { domain: 'example.co.uk', dns: { provider: 'cloudflare', zone: 'example.co.uk' } },
+    ],
+  ])('refuses an apex domain (%s)', async (_case, target) => {
+    const { profile, request } = input(fakeAzure(), target, { dns: createCloudflareDns() });
     await expect(profile.prepare(request)).rejects.toMatchObject({
       code: ErrorCode.Unsupported,
-      hint: expect.stringContaining('M9'),
+      message: expect.stringContaining('apex'),
+      hint: expect.stringContaining('www.'),
+    });
+  });
+
+  it('adds the GitHub Actions identity with access to its own state only', async () => {
+    const { profile, request } = input(fakeAzure(), {
+      ci: { repo: 'acme/docs', environments: ['production'] },
+    });
+    const { spec } = await profile.prepare(request);
+    const location = spec.backend.config;
+    expect(spec.requiredProviders).toHaveProperty('azuread.source', 'hashicorp/azuread');
+    expect(spec.additionalModules).toEqual([
+      {
+        name: 'ci',
+        dir: CI_MODULE_DIR,
+        inputs: {
+          name: 'docs-example-com',
+          target: 'prod',
+          subscription_id: SUBSCRIPTION,
+          repo: 'acme/docs',
+          branches: ['main'],
+          environments: ['production'],
+          pull_requests: true,
+          resource_group_id: { ref: 'module.site.resource_group_id' },
+          static_web_app_id: { ref: 'module.site.static_web_app_id' },
+          state_container_id:
+            `/subscriptions/${SUBSCRIPTION}/resourceGroups/sforge-state` +
+            `/providers/Microsoft.Storage/storageAccounts/${String(location.storage_account_name)}` +
+            '/blobServices/default/containers/tfstate',
+          state_key: 'docs-example-com/prod.tfstate',
+          history_prefix: '_sforge/docs-example-com/prod/',
+        },
+      },
+    ]);
+    expect(spec.additionalOutputs).toEqual({
+      ci_client_id: { ref: 'module.ci.client_id' },
+      ci_tenant_id: { ref: 'module.ci.tenant_id' },
+      ci_subscription_id: { ref: 'module.ci.subscription_id' },
+    });
+  });
+
+  it('keeps within Entra’s limit of federated logins', async () => {
+    const branches = Array.from({ length: 20 }, (_, i) => `b${i}`);
+    const { profile, request } = input(fakeAzure(), { ci: { repo: 'acme/docs', branches } });
+    await expect(profile.prepare(request)).rejects.toMatchObject({
+      code: ErrorCode.ConfigInvalid,
+      message: expect.stringContaining('allows 21 branches, environments and pull requests'),
     });
   });
 

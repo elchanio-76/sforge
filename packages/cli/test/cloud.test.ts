@@ -294,21 +294,21 @@ describe('sforge provision', () => {
     expect(unknown.json().error.code).toBe('SF_TARGET_NOT_FOUND');
   });
 
-  it('tells Azure targets that custom domains are not supported yet', async () => {
+  it('tells Azure targets that apex domains are not supported yet', async () => {
     // Rejected before any Azure call is made.
     const cwd = project({
       prod: {
         provider: 'azure',
         resourceGroup: 'rg',
         location: 'westeurope',
-        domain: 'www.example.com',
+        domain: 'example.com',
       },
     });
     const result = await sforge(['provision', 'prod', '--json'], { cwd });
     expect(result.exitCode).toBe(2);
     expect(result.json().error).toMatchObject({
       code: 'SF_UNSUPPORTED',
-      hint: expect.stringContaining('M9'),
+      hint: 'Use a subdomain such as www.example.com.',
     });
   });
 });

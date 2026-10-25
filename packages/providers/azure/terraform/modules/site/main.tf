@@ -36,3 +36,26 @@ resource "azurerm_static_web_app" "site" {
 
   tags = local.tags
 }
+
+# Optional custom domain. cname-delegation validation needs the CNAME to the
+# app's default host to exist first; the provider then polls until Azure has
+# validated it and issued the free managed certificate.
+
+resource "terraform_data" "dns_ready" {
+  count = var.domain == null ? 0 : 1
+  input = var.dns_ready
+}
+
+resource "azurerm_static_web_app_custom_domain" "site" {
+  count = var.domain == null ? 0 : 1
+
+  static_web_app_id = azurerm_static_web_app.site.id
+  domain_name       = var.domain
+  validation_type   = "cname-delegation"
+
+  timeouts {
+    create = "1h"
+  }
+
+  depends_on = [terraform_data.dns_ready]
+}

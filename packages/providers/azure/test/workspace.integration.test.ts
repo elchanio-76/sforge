@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createLogger } from '@staticforge/core';
+import { createCloudflareDns } from '@staticforge/cloudflare';
 import { init, resolveEngine, runEngine, workspaceDir, writeWorkspace } from '@staticforge/iac';
 import { createAzureIacProfile } from '../src/index.js';
 import { azureConfig, fakeAzure } from './fakes.js';
@@ -35,9 +36,25 @@ describe.runIf(process.env.SFORGE_IAC_TESTS === '1')('generated Azure workspaces
         env: {},
         logger,
       });
+      // A custom domain in Cloudflare and the GitHub Actions identity.
+      const full = azureConfig({
+        domain: 'azure.docs.example.com',
+        dns: { provider: 'cloudflare', zone: 'example.com', zoneId: 'a'.repeat(32) },
+        ci: { repo: 'acme/docs', environments: ['production'] },
+      });
+      const withDomain = await createAzureIacProfile(fakeAzure().clients).prepare({
+        rootDir,
+        config: full,
+        targetName: 'prod',
+        target: full.targets.prod!,
+        env: { CLOUDFLARE_API_TOKEN: 'unused' },
+        logger,
+        dns: createCloudflareDns(),
+      });
       for (const [name, spec] of [
         ['prod', prepared.spec],
         ['state', prepared.state.bootstrap],
+        ['domain', withDomain.spec],
       ] as const) {
         const dir = workspaceDir(rootDir, name);
         writeWorkspace({ dir, spec, vendor: name === 'state' });

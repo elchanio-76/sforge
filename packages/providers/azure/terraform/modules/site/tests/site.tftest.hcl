@@ -65,6 +65,9 @@ run "deployment_token_is_not_exported" {
       output.sku,
       output.default_host_name,
       output.url,
+      output.resource_group_id,
+      jsonencode(output.dns_records),
+      jsonencode(output.dns_routing_records),
     ]), "super-secret-deployment-token")
     error_message = "The deployment token must never be a module output."
   }
@@ -128,3 +131,44 @@ run "long_names_are_shortened" {
     error_message = "Static Web App names are at most 60 characters."
   }
 }
+
+run "custom_domain_after_its_cname" {
+  command = apply
+
+  variables {
+    domain    = "azure.docs.example.com"
+    dns_ready = { "azure.docs.example.com" = "023e105f4ecef8ad9ca31a8372d0c353" }
+  }
+
+  assert {
+    condition     = azurerm_static_web_app_custom_domain.site[0].domain_name == "azure.docs.example.com" && azurerm_static_web_app_custom_domain.site[0].validation_type == "cname-delegation"
+    error_message = "The domain is validated through its CNAME to the app."
+  }
+
+  assert {
+    condition     = terraform_data.dns_ready[0].output["azure.docs.example.com"] == "023e105f4ecef8ad9ca31a8372d0c353"
+    error_message = "The custom domain waits for the records of the DNS module."
+  }
+
+  assert {
+    condition = output.dns_routing_records == {
+      "azure.docs.example.com" = { name = "azure.docs.example.com", type = "CNAME", value = "lemon-bush-0123456ab.5.azurestaticapps.net" }
+    }
+    error_message = "The CNAME points the domain at the app's default host."
+  }
+
+  assert {
+    condition     = output.url == "https://azure.docs.example.com"
+    error_message = "The URL uses the custom domain."
+  }
+}
+
+run "no_custom_domain_by_default" {
+  command = apply
+
+  assert {
+    condition     = length(azurerm_static_web_app_custom_domain.site) == 0 && length(output.dns_records) == 0 && length(output.dns_routing_records) == 0
+    error_message = "Without a domain there is nothing to validate or point."
+  }
+}
+

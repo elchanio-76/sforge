@@ -82,6 +82,7 @@ try {
     [
       'aws/terraform/modules/site',
       'azure/terraform/modules/site',
+      'azure/terraform/modules/ci-oidc',
       'cloudflare/terraform/modules/records',
     ].every((dir) => existsSync(join(project, `node_modules/@staticforge/${dir}/versions.tf`))),
     'the HCL modules are in the packages',

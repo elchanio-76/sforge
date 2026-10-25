@@ -7,7 +7,10 @@ import {
   type IacSpec,
   type PreparedTarget,
   type ProfileInput,
+  iacRef,
+  prepareDns,
   projectName,
+  withDns,
 } from '@staticforge/iac';
 import { type AzureClients, azureError, defaultClients, httpStatus } from './clients.js';
 
@@ -16,9 +19,13 @@ const terraformDir = (path: string) =>
   fileURLToPath(new URL(`../terraform/${path}`, import.meta.url));
 
 export const SITE_MODULE_DIR = terraformDir('modules/site');
+export const CI_MODULE_DIR = terraformDir('modules/ci-oidc');
 export const STATE_BOOTSTRAP_DIR = terraformDir('state-bootstrap');
 
+type CiConfig = NonNullable<AzureTargetConfig['ci']>;
+
 const AZURERM_PROVIDER = { source: 'hashicorp/azurerm', version: '>= 4.0, < 5.0' };
+const AZUREAD_PROVIDER = { source: 'hashicorp/azuread', version: '>= 3.0, < 4.0' };
 const TIME_PROVIDER = { source: 'hashicorp/time', version: '>= 0.12, < 1.0' };
 
 /** Where Azure offers Static Web Apps. */
@@ -154,6 +161,94 @@ const azurermProvider = (subscriptionId: string) => ({
   resource_providers_to_register: RESOURCE_PROVIDERS,
 });
 
+/**
+ * Static Web Apps validate apex domains with a TXT token instead of a CNAME,
+ * which sforge does not support yet. Without a DNS zone to compare with, a
+ * name of two labels is taken to be an apex.
+ */
+function assertNotApex(target: AzureTargetConfig, name: string): void {
+  const domain = target.domain;
+  if (domain === undefined) return;
+  const apex = target.dns !== undefined ? domain === target.dns.zone : domain.split('.').length < 3;
+  if (apex) {
+    throw new SforgeError(
+      ErrorCode.Unsupported,
+      `targets.${name}.domain ${domain} is the apex of its zone, which Azure targets do not support yet`,
+      { hint: `Use a subdomain such as www.${domain}.` },
+    );
+  }
+}
+
+/** Entra allows 20 federated logins per application: one per branch, environment and pull requests. */
+const FEDERATED_LIMIT = 20;
+
+function assertFederatedLimit(ci: CiConfig, name: string): void {
+  const subjects = ci.branches.length + ci.environments.length + (ci.pullRequests ? 1 : 0);
+  if (subjects > FEDERATED_LIMIT) {
+    throw new SforgeError(
+      ErrorCode.ConfigInvalid,
+      `targets.${name}.ci allows ${subjects} branches, environments and pull requests; Azure allows ${FEDERATED_LIMIT}`,
+      { hint: 'Deploy from fewer branches, or through a GitHub environment.' },
+    );
+  }
+}
+
+/** Add the GitHub Actions identity (`ci-oidc` module) and re-export what azure/login needs. */
+function withCiIdentity(
+  spec: IacSpec,
+  ci: CiConfig,
+  site: { project: string; name: string; subscriptionId: string; location: StateLocation },
+): IacSpec {
+  const { location } = site;
+  const container =
+    `/subscriptions/${location.subscriptionId}/resourceGroups/${location.resourceGroup}` +
+    `/providers/Microsoft.Storage/storageAccounts/${location.storageAccount}` +
+    `/blobServices/default/containers/${location.container}`;
+  const history = historyBlobName(site.project, site.name);
+  return {
+    ...spec,
+    requiredProviders: { ...spec.requiredProviders, azuread: AZUREAD_PROVIDER },
+    additionalModules: [
+      ...(spec.additionalModules ?? []),
+      {
+        name: 'ci',
+        dir: CI_MODULE_DIR,
+        inputs: {
+          name: site.project,
+          target: site.name,
+          subscription_id: site.subscriptionId,
+          repo: ci.repo,
+          branches: ci.branches,
+          environments: ci.environments,
+          pull_requests: ci.pullRequests,
+          resource_group_id: iacRef('module.site.resource_group_id'),
+          static_web_app_id: iacRef('module.site.static_web_app_id'),
+          state_container_id: container,
+          state_key: location.key,
+          history_prefix: history.slice(0, history.lastIndexOf('/') + 1),
+        },
+      },
+    ],
+    additionalOutputs: {
+      ...spec.additionalOutputs,
+      ci_client_id: iacRef('module.ci.client_id'),
+      ci_tenant_id: iacRef('module.ci.tenant_id'),
+      ci_subscription_id: iacRef('module.ci.subscription_id'),
+    },
+  };
+}
+
+/** Instructions for the CNAME the user must create (no DNS provider). */
+export function describeCname(outputs: Record<string, unknown>): string | undefined {
+  const records = outputs.dns_records as
+    { name: string; type: string; value: string }[] | undefined;
+  if (records === undefined || records.length === 0) return undefined;
+  return [
+    'Create this DNS record (provisioning waits until Azure has validated it):',
+    ...records.map((r) => `  ${r.name} ${r.type} ${r.value}`),
+  ].join('\n');
+}
+
 export function createAzureIacProfile(clients: AzureClients = defaultClients()): IacProfile {
   return {
     provider: 'azure',
@@ -161,21 +256,6 @@ export function createAzureIacProfile(clients: AzureClients = defaultClients()):
       const target = input.target as AzureTargetConfig;
       const name = input.targetName;
 
-      for (const [option, label] of [
-        [target.domain, 'domain'],
-        [target.dns, 'dns'],
-        [target.ci, 'ci'],
-      ] as const) {
-        if (option !== undefined) {
-          throw new SforgeError(
-            ErrorCode.Unsupported,
-            `targets.${name}.${label} is not supported for Azure targets yet`,
-            {
-              hint: 'Custom domains and the GitHub Actions identity for Azure arrive in milestone M9.',
-            },
-          );
-        }
-      }
       if (!SWA_LOCATIONS.includes(target.location)) {
         throw new SforgeError(
           ErrorCode.ConfigInvalid,
@@ -183,6 +263,9 @@ export function createAzureIacProfile(clients: AzureClients = defaultClients()):
           { hint: `Use one of: ${SWA_LOCATIONS.join(', ')}.` },
         );
       }
+      assertNotApex(target, name);
+      if (target.ci !== undefined) assertFederatedLimit(target.ci, name);
+      const dns = await prepareDns(input, target.domain === undefined ? [] : [target.domain]);
 
       const project = projectName(input.config);
       const outputsOnly = input.purpose === 'outputs';
@@ -192,7 +275,7 @@ export function createAzureIacProfile(clients: AzureClients = defaultClients()):
       const exists = outputsOnly ? true : await stateExists(clients, location);
 
       const tags = { 'sforge:managed-by': 'staticforge' };
-      const spec: IacSpec = {
+      const site: IacSpec = {
         requiredProviders: { azurerm: AZURERM_PROVIDER },
         providers: { azurerm: [azurermProvider(subscriptionId)] },
         module: {
@@ -205,6 +288,9 @@ export function createAzureIacProfile(clients: AzureClients = defaultClients()):
             create_resource_group: target.createResourceGroup,
             location: target.location,
             sku: target.sku,
+            domain: target.domain ?? null,
+            // The custom domain waits for the CNAME the DNS module creates.
+            ...(dns && { dns_ready: iacRef('module.dns_routing.ids') }),
             tags: { ...tags, 'sforge:site': project, 'sforge:target': name },
           },
         },
@@ -216,9 +302,19 @@ export function createAzureIacProfile(clients: AzureClients = defaultClients()):
           'sku',
           'default_host_name',
           'url',
+          'domain',
+          'dns_records',
         ],
         backend: azurermBackend(location),
       };
+      let spec = dns
+        ? withDns(site, dns, [
+            { name: 'dns_routing', records: iacRef('module.site.dns_routing_records') },
+          ])
+        : site;
+      if (target.ci !== undefined) {
+        spec = withCiIdentity(spec, target.ci, { project, name, subscriptionId, location });
+      }
 
       const bootstrap: IacSpec = {
         requiredProviders: { azurerm: AZURERM_PROVIDER, time: TIME_PROVIDER },
@@ -246,6 +342,15 @@ export function createAzureIacProfile(clients: AzureClients = defaultClients()):
           exists,
           bootstrap,
         },
+        // Without a DNS provider, create the app first and print the CNAME; the custom
+        // domain then waits (polling Azure's validation) until the user has created it.
+        ...(target.domain !== undefined &&
+          dns === undefined && {
+            prePhase: {
+              targets: ['module.site.azurerm_static_web_app.site'],
+              describe: describeCname,
+            },
+          }),
       };
     },
   };

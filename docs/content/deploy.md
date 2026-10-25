@@ -286,11 +286,53 @@ providers itself.
 **Target options**: `resourceGroup` (created and deleted with the site unless
 `createResourceGroup: false`), `location` (`westus2`, `centralus`, `eastus2`, `westeurope` or
 `eastasia`: the only regions with Static Web Apps), `sku` (`Free` or `Standard`),
-`retainVersions` (deploys remembered for rollback, default 10) and `state`. `domain`, `dns` and
-`ci` are rejected for now (`SF_UNSUPPORTED`): custom domains and the GitHub Actions identity are
-milestone M9, so the site is served at its `*.azurestaticapps.net` URL. Set the target's
+`retainVersions` (deploys remembered for rollback, default 10), `state`, `domain` and `dns`
+([custom domain](#custom-domain)), `ci` ([GitHub Actions](#github-actions-identity)) and `baseUrl`.
+Without a `domain` the site is served at its `*.azurestaticapps.net` URL: set the target's
 `baseUrl` (or `site.baseUrl`) to that URL (printed by `provision`) so canonical links and the
 sitemap are right.
+
+### Custom domain
+
+```ts
+prod: {
+  provider: 'azure',
+  resourceGroup: 'rg-docs',
+  location: 'eastus2',
+  domain: 'azure.docs.example.com',
+  dns: { provider: 'cloudflare', zone: 'example.com' }, // optional
+},
+```
+
+Static Web Apps validates a subdomain through a CNAME to the app's default host, then issues a
+free managed certificate. With `dns`, sforge creates that CNAME in Cloudflare (see
+[DNS records in Cloudflare](#dns-records-in-cloudflare); the same token and rules apply) before
+adding the domain. Without it, `provision` creates the app first, prints the CNAME, and waits (up to
+an hour) while Azure validates it; `--no-wait` stops after printing. Apex domains (`example.com`)
+need TXT validation, which sforge does not support yet: they are refused with `SF_UNSUPPORTED`.
+The Free plan allows two custom domains per app. PR previews stay on their
+`*.azurestaticapps.net` hosts: Static Web Apps has no wildcard domains.
+
+### GitHub Actions identity
+
+With `ci` (the same option as on AWS, e.g.
+`ci: { repo: 'acme/docs', environments: ['production'] }`), `provision` also creates (module
+`ci-oidc`):
+
+- a Microsoft Entra application and service principal with one **federated login** per branch,
+  environment and (if enabled) pull requests of that repository. GitHub's OIDC tokens sign in as
+  it; there is no secret. Entra matches subjects exactly and allows 20 per application.
+- a custom role on the site's resource group, assigned on the Static Web App only, that can read
+  the app, list and delete its environments, and read its deployment token: what `deploy`,
+  `rollback` and `preview-destroy` need.
+- `Storage Blob Data Contributor` on the state container, with a condition that limits reading,
+  writing and deleting to this target's state file and its deploy history. Blob names in the
+  container can be listed.
+
+The identity cannot change the infrastructure, so run `provision` as an administrator. The
+outputs `ci_client_id`, `ci_tenant_id` and `ci_subscription_id` are what `azure/login` needs.
+Creating the application needs permission to register applications in Entra (users have it unless
+the tenant restricts it).
 
 ### Remote state
 
@@ -303,14 +345,16 @@ delete. Locking uses blob leases. State is kept at `<project>/<target>.tfstate`.
 Subscription **Owner does not include access to blob data**, so the bootstrap also grants
 `Storage Blob Data Contributor` on the account to the identity that runs it, and waits two minutes
 for the role assignment to take effect before migrating its own state into the account. Other
-people (and, from M9, CI) need the same role. If `provision` fails with
+people need the same role; the [GitHub Actions identity](#github-actions-identity) gets a narrower
+one. If `provision` fails with
 `AuthorizationPermissionMismatch` or a 403 on the state blob, the role is missing or has not
 propagated yet.
 
 ### What gets created
 
 The `site` module (`packages/providers/azure/terraform/modules/site`): the resource group and an
-`azurerm_static_web_app` with named preview environments enabled and no repository link. The
+`azurerm_static_web_app` with named preview environments enabled and no repository link, and the
+custom domain when one is set. The
 deployment token is read by `sforge deploy` when needed; it is neither an output nor written to any
 file.
 

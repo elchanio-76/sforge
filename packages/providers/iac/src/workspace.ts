@@ -127,10 +127,18 @@ export function writeWorkspace(options: WriteWorkspaceOptions): string[] {
       variable: Object.fromEntries(Object.keys(variables).map((name) => [name, {}])),
     }),
     module: blocks,
-    ...(spec.outputs.length > 0 && {
-      output: Object.fromEntries(
-        spec.outputs.map((name) => [name, { value: `\${module.${spec.module.name}.${name}}` }]),
-      ),
+    ...((spec.outputs.length > 0 || spec.additionalOutputs !== undefined) && {
+      output: {
+        ...Object.fromEntries(
+          spec.outputs.map((name) => [name, { value: `\${module.${spec.module.name}.${name}}` }]),
+        ),
+        ...Object.fromEntries(
+          Object.entries(spec.additionalOutputs ?? {}).map(([name, value]) => [
+            name,
+            { value: `\${${value.ref}}` },
+          ]),
+        ),
+      },
     }),
   };
   writeJson(join(dir, 'main.tf.json'), main);

@@ -38,6 +38,18 @@ variable "sku" {
   }
 }
 
+variable "domain" {
+  description = "Custom domain (not the zone apex). Null serves the site from its *.azurestaticapps.net host."
+  type        = string
+  default     = null
+}
+
+variable "dns_ready" {
+  description = "Record IDs from a DNS module that created the domain's CNAME (Cloudflare): the custom domain waits for them. Null means the user creates the printed CNAME while provisioning waits."
+  type        = map(string)
+  default     = null
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
