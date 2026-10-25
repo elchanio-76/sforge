@@ -14,6 +14,12 @@ together, with the same version.
    node scripts/publish.mjs            # add --dry-run first to see what would be published
    ```
 
+   With 2FA, npm asks for each package: it either prints a link to approve the publish in the
+   browser (tick "skip for the next 5 minutes" to approve the rest at once) or asks for a
+   one-time password. An authenticator code is valid for about 30 seconds, so passing one with
+   `--otp=<code>` only helps when few packages are left; a re-run skips the ones already
+   published.
+
    npm can only set up trusted publishing for packages that exist.
 
 3. For each of the 14 packages, on npmjs.com → the package → Settings → Trusted publishing, add a

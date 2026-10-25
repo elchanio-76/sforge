@@ -2,7 +2,9 @@
 // turns `workspace:*` into exact versions, and npm publishes the tarballs, the
 // scoped packages before `staticforge`. Versions already on the registry are
 // skipped, so a failed run can simply be repeated.
-// Usage: node scripts/publish.mjs [--provenance] [--dry-run]
+// npm publish runs attached to the terminal, so with 2FA it can show its browser
+// link or ask for a one-time password.
+// Usage: node scripts/publish.mjs [--provenance] [--dry-run] [--otp=<code>]
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,6 +13,7 @@ import { join } from 'node:path';
 const root = new URL('..', import.meta.url).pathname;
 const provenance = process.argv.includes('--provenance');
 const dryRun = process.argv.includes('--dry-run');
+const otp = process.argv.find((arg) => arg.startsWith('--otp='));
 const dir = mkdtempSync(join(tmpdir(), 'sforge-publish-'));
 
 const run = (command, args) =>
@@ -44,14 +47,19 @@ try {
       continue;
     }
     console.log(`publish ${name}@${version}`);
-    run('npm', [
-      'publish',
-      tarball,
-      '--access',
-      'public',
-      ...(provenance ? ['--provenance'] : []),
-      ...(dryRun ? ['--dry-run'] : []),
-    ]);
+    execFileSync(
+      'npm',
+      [
+        'publish',
+        tarball,
+        '--access',
+        'public',
+        ...(provenance ? ['--provenance'] : []),
+        ...(dryRun ? ['--dry-run'] : []),
+        ...(otp ? [otp] : []),
+      ],
+      { cwd: root, stdio: 'inherit' },
+    );
   }
 } finally {
   rmSync(dir, { recursive: true, force: true });
