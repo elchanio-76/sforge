@@ -187,6 +187,11 @@ By default `deploy` builds into `build.outDir`, runs the checker (rendered check
 `--no-headless` or `check.headless: false`), and refuses to deploy (`SF_CHECK_FAILED`, exit 1)
 if it finds problems at or above `check.failOn`.
 
+Production builds use the target's own URL for canonical links, feeds and the sitemap:
+`targets.<name>.baseUrl` if set, else `https://<domain>/` when the target has a `domain`, else
+`site.baseUrl`. So one project can deploy to several targets on different domains.
+`sforge build` on its own always uses `site.baseUrl`.
+
 The deployer needs the infrastructure's outputs (bucket, distribution, KeyValueStore). After
 `provision` they are cached in `.sforge/state/<target>.json`. The file is not committed, so
 in CI `deploy` reads them from the remote state with the engine.
@@ -283,8 +288,9 @@ providers itself.
 `eastasia`: the only regions with Static Web Apps), `sku` (`Free` or `Standard`),
 `retainVersions` (deploys remembered for rollback, default 10) and `state`. `domain`, `dns` and
 `ci` are rejected for now (`SF_UNSUPPORTED`): custom domains and the GitHub Actions identity are
-milestone M9, so the site is served at its `*.azurestaticapps.net` URL. Set `site.baseUrl` to
-that URL (printed by `provision`) so canonical links and the sitemap are right.
+milestone M9, so the site is served at its `*.azurestaticapps.net` URL. Set the target's
+`baseUrl` (or `site.baseUrl`) to that URL (printed by `provision`) so canonical links and the
+sitemap are right.
 
 ### Remote state
 

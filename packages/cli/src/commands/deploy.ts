@@ -9,6 +9,7 @@ import {
   createWorkerPool,
   formatDiagnostic,
   poolSize,
+  targetBaseUrl,
 } from '@staticforge/core';
 import type { DeployResult } from '@staticforge/provider-api';
 import { type Runtime, action } from '../command.js';
@@ -105,6 +106,9 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
 
       const outDir = resolve(rootDir, config.build.outDir);
       const previewBaseUrl = preview === undefined ? undefined : deployer.previewBaseUrl?.(preview);
+      // Previews get their own canonical URLs, feeds and sitemap; production gets the target's.
+      const baseUrl =
+        preview === undefined ? targetBaseUrl(config, target.targetName) : previewBaseUrl;
       let check: Awaited<ReturnType<typeof checkBeforeDeploy>> | undefined;
       if (options.build !== false) {
         // One pool for the build and the check.
@@ -112,11 +116,10 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
         const pool = size > 0 ? createWorkerPool(size) : undefined;
         try {
           const { buildSite } = await import('@staticforge/build');
-          // Previews get their own canonical URLs, feeds and sitemap.
           const build = await buildSite({
             rootDir,
             config,
-            ...(previewBaseUrl !== undefined && { baseUrl: previewBaseUrl }),
+            ...(baseUrl !== undefined && { baseUrl }),
             generator: `staticforge ${VERSION}`,
             logger: ctx.logger,
             ...(pool && { pool }),

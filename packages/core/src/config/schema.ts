@@ -48,12 +48,20 @@ const dnsSchema = z
     'Create the DNS records of the custom domain (certificate validation, routing). Records are DNS-only, never proxied. The API token comes from CLOUDFLARE_API_TOKEN.',
   );
 
+const targetBaseUrl = z
+  .url({ protocol: /^https?$/ })
+  .optional()
+  .describe(
+    'URL this target serves the site at, for canonical links, feeds and sitemaps. Defaults to https://<domain>/ with a domain, otherwise site.baseUrl.',
+  );
+
 const awsTargetSchema = z.strictObject({
   provider: z.literal('aws'),
   region: z
     .string()
     .regex(/^[a-z]{2}(-[a-z]+)+-\d$/, 'must be an AWS region such as "eu-central-1"'),
   domain: hostname.optional().describe('Custom domain. Omit to use the *.cloudfront.net URL.'),
+  baseUrl: targetBaseUrl,
   hostedZone: hostname
     .optional()
     .describe('Route 53 hosted zone for automatic DNS validation and alias records. Not with dns.'),
@@ -116,6 +124,7 @@ const azureTargetSchema = z.strictObject({
   domain: hostname
     .optional()
     .describe('Custom domain (not the zone apex). Omit to use the *.azurestaticapps.net URL.'),
+  baseUrl: targetBaseUrl,
   dns: dnsSchema.optional(),
   state: z
     .strictObject({

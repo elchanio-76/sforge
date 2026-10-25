@@ -411,6 +411,11 @@
                 "type": "string",
                 "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
               },
+              "baseUrl": {
+                "description": "URL this target serves the site at, for canonical links, feeds and sitemaps. Defaults to https://<domain>/ with a domain, otherwise site.baseUrl.",
+                "type": "string",
+                "format": "uri"
+              },
               "hostedZone": {
                 "description": "Route 53 hosted zone for automatic DNS validation and alias records. Not with dns.",
                 "type": "string",
@@ -579,6 +584,11 @@
                 "description": "Custom domain (not the zone apex). Omit to use the *.azurestaticapps.net URL.",
                 "type": "string",
                 "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+              },
+              "baseUrl": {
+                "description": "URL this target serves the site at, for canonical links, feeds and sitemaps. Defaults to https://<domain>/ with a domain, otherwise site.baseUrl.",
+                "type": "string",
+                "format": "uri"
               },
               "dns": {
                 "type": "object",

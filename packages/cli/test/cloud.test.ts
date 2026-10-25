@@ -539,6 +539,26 @@ describe('sforge deploy, versions and rollback', () => {
     expect(home).toContain('https://app-pr-1.westeurope.azurestaticapps.net/');
   });
 
+  it('builds production with the URL of the target’s domain', async () => {
+    const cwd = project({
+      staging: { provider: 'aws', region: 'eu-central-1', domain: 'aws.example.org' },
+    });
+    const { provider, deploys } = fakeProvider();
+    const result = await sforge(['deploy', 'staging', '--no-check', '--json'], {
+      cwd,
+      env: engineEnv({ output: { stdout: [JSON.stringify(outputs)] } }).env,
+      providers: { aws: provider },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(deploys).toHaveLength(1);
+    const home = readFileSync(join(cwd, 'dist', 'index.html'), 'utf8');
+    expect(home).toContain('<link rel="canonical" href="https://aws.example.org/"');
+    expect(home).not.toContain('https://www.example.com/');
+    expect(readFileSync(join(cwd, 'dist', 'sitemap.xml'), 'utf8')).toContain(
+      '<loc>https://aws.example.org/</loc>',
+    );
+  });
+
   it('validates preview ids before building', async () => {
     const cwd = provisioned();
     const result = await sforge(['deploy', 'staging', '--preview', 'PR 1', '--json'], {

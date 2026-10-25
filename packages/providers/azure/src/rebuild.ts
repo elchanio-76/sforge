@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { buildSite } from '@staticforge/build';
-import { type LoadedConfig, ErrorCode, SforgeError } from '@staticforge/core';
+import { type LoadedConfig, ErrorCode, SforgeError, targetBaseUrl } from '@staticforge/core';
 import type { DeployerContext } from '@staticforge/provider-api';
 
 export interface Rebuilt {
@@ -91,6 +91,7 @@ export const rebuildAtCommit: Rebuild = async (sha, context) => {
     const build = await buildSite({
       rootDir: loaded.rootDir,
       config: loaded.config,
+      baseUrl: targetBaseUrl(loaded.config, context.targetName),
       scratchDir: join(scratch, 'out'),
       logger: context.logger,
     });

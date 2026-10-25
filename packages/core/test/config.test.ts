@@ -7,6 +7,7 @@ import {
   findConfigFile,
   getTarget,
   loadConfig,
+  targetBaseUrl,
   validateConfig,
 } from '../src/index.js';
 import { minimalConfig, tempProject } from './helpers.js';
@@ -212,6 +213,41 @@ describe('getTarget', () => {
   it('lists known targets when the name is unknown', () => {
     const error = expectSforgeError(() => getTarget(config, 'prod'), ErrorCode.TargetNotFound);
     expect(error.hint).toBe('Known targets: staging');
+  });
+});
+
+describe('targetBaseUrl', () => {
+  const config = validateConfig({
+    ...minimalConfig,
+    targets: {
+      plain: { provider: 'aws', region: 'eu-central-1' },
+      custom: { provider: 'aws', region: 'eu-central-1', domain: 'aws.example.com' },
+      pinned: {
+        provider: 'azure',
+        resourceGroup: 'rg',
+        location: 'eastus2',
+        domain: 'azure.example.com',
+        baseUrl: 'https://www.example.com/',
+      },
+    },
+  });
+
+  it('prefers the target URL, then its domain, then site.baseUrl', () => {
+    expect(targetBaseUrl(config, 'pinned')).toBe('https://www.example.com/');
+    expect(targetBaseUrl(config, 'custom')).toBe('https://aws.example.com/');
+    expect(targetBaseUrl(config, 'plain')).toBe(config.site.baseUrl);
+    expect(targetBaseUrl(config, 'missing')).toBe(config.site.baseUrl);
+  });
+
+  it('accepts only http(s) URLs', () => {
+    expectSforgeError(
+      () =>
+        validateConfig({
+          ...minimalConfig,
+          targets: { t: { provider: 'aws', region: 'eu-central-1', baseUrl: 'ftp://x.example' } },
+        }),
+      ErrorCode.ConfigInvalid,
+    );
   });
 });
 

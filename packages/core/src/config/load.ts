@@ -155,3 +155,16 @@ export function getTarget(config: SforgeConfig, name: string): TargetConfig {
   }
   return target;
 }
+
+/**
+ * The URL a target serves production at, for canonical links, feeds and
+ * sitemaps: `targets.<n>.baseUrl`, else `https://<domain>/`, else
+ * `site.baseUrl`. Unknown targets get `site.baseUrl` (e.g. an older commit's
+ * config that predates the target).
+ */
+export function targetBaseUrl(config: SforgeConfig, name: string): string {
+  const target = config.targets[name];
+  if (target?.baseUrl !== undefined) return target.baseUrl;
+  if (target?.domain !== undefined) return `https://${target.domain}/`;
+  return config.site.baseUrl;
+}

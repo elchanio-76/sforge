@@ -410,6 +410,8 @@ targets: {
 - Remove the `SF_UNSUPPORTED` guard. Error mapping covers SWA quota limits (2 custom domains on Free) and Entra permission failures.
 
 ### E. Per-target base URL (`packages/cli/src/commands/deploy.ts`, core config)
+**Done (2026-10-25).** `targetBaseUrl(config, target)` in `packages/core/src/config/load.ts` (`targets.<n>.baseUrl`, else `https://<domain>/`, else `site.baseUrl`; unknown targets fall back to `site.baseUrl`) is used by production deploys and by Azure's rollback rebuild (with the old commit's config). `sforge build` keeps `site.baseUrl`, and `projectName` (state keys) still derives from `site.baseUrl`, so state locations do not move. Known, unrelated: two dev-server tests are load-sensitive under the full suite (the search-index poll, and the temp-directory count on close); both predate M9 and are left for a separate fix.
+
 Production builds for a target with `domain` use `https://<domain>/` (canonical URLs, sitemap, feeds, OG) instead of `site.baseUrl`. `targets.<n>.baseUrl` overrides it. Previews keep using `previewBaseUrl`. Without this, two targets on two domains would publish wrong canonical URLs.
 
 ### F. `sforge ci init` + release plumbing
