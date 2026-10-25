@@ -3,7 +3,8 @@
 // scoped packages before `staticforge`. Versions already on the registry are
 // skipped, so a failed run can simply be repeated.
 // npm publish runs attached to the terminal, so with 2FA it can show its browser
-// link or ask for a one-time password.
+// link or ask for a one-time password. Prereleases (0.2.0-rc.1) go to the `next`
+// dist-tag, so `npm install staticforge` keeps getting the latest release.
 // Usage: node scripts/publish.mjs [--provenance] [--dry-run] [--otp=<code>]
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
@@ -54,6 +55,7 @@ try {
         tarball,
         '--access',
         'public',
+        ...(version.includes('-') ? ['--tag', 'next'] : []),
         ...(provenance ? ['--provenance'] : []),
         ...(dryRun ? ['--dry-run'] : []),
         ...(otp ? [otp] : []),

@@ -272,11 +272,14 @@ User documentation: `docs/content/mcp.md`.
 - **Logs and progress**: command logs go to stderr (MCP logging is deprecated in the 2026 spec) and, while the request is open and has a progress token, as progress notifications. `console.log` is redirected to stderr so no library can corrupt the protocol on stdout; engine and SWA child processes already pipe their output.
 - **Lifecycle**: session state (dev server, latest diagnostics) lives outside the `McpServer`, because `serveStdio` may create two instances per connection. The server exits when stdin closes or on SIGINT/SIGTERM, stopping its dev server.
 
-## 13. GitHub Actions (`sforge ci init`)
-Generates `.github/workflows/`:
-- **`site.yml`**: on `pull_request` → install, `sforge build`, `sforge check --headless --format sarif` (uploaded to code scanning, plus PR annotations), `sforge deploy <target> --preview pr-${{ github.event.number }}`, then a comment with the preview URL. On `push` to `main` → build, check, `deploy staging`. A `workflow_dispatch`/release with a `prod` **environment** (protection rules) → `deploy prod`.
-- **`preview-cleanup.yml`**: on `pull_request: closed` → `sforge preview-destroy`.
-- Auth: `aws-actions/configure-aws-credentials` with `role-to-assume` (from provision output) and `permissions: id-token: write`. `azure/login` with federated client-id/tenant/subscription. Pinned action SHAs, Playwright browser caching, pnpm/npm cache.
+## 13. GitHub Actions (`sforge ci init`) ✅ (M9, code; verified in the test repository in M9)
+User documentation: `docs/content/ci.md`. `sforge ci init [--targets a,b] [--package-manager pnpm|npm] [--force]` writes, at the git root (with `defaults.run.working-directory` when the project is in a subdirectory):
+- **`sforge.yml`**: on `pull_request` and `push`. Job `check`: install, Chromium (`npx playwright-core@<checker's version> install --with-deps --only-shell chromium`, cached), `sforge check --headless --format sarif`, upload to code scanning (category `sforge`). Per target with previews (`ci.pullRequests`, and on AWS `domain` + `previewDomain`): `preview-<t>` deploys `--preview pr-<n> --no-headless` and outputs the URL; job `comment` upserts one PR comment (marker `<!-- sforge-preview -->`, `gh api`). Per target: `deploy-<t>` on push to the first of `ci.branches` (`main` without any), inside the first of `ci.environments` when set (its protection rules gate the deploy; the OIDC subject is then the environment).
+- **`sforge-preview-cleanup.yml`** (only when a target has previews): on `pull_request: closed`, `preview-destroy` per target.
+- **`sforge-rollback.yml`**: `workflow_dispatch` with `target` (choice) and optional `to`; Azure jobs check out with `fetch-depth: 0` (rollback by rebuild).
+- Every workflow starts with `permissions: {}`; jobs get only `id-token: write` (cloud sign-in), `security-events: write` (upload) or `pull-requests: write` (comment). Fork PRs are checked but never deployed (no OIDC token). Event values reach scripts through `env`, never `${{ }}` inside `run`. Deploys per target share a `concurrency` group (the version history refuses concurrent writes). `~/.cache/staticforge` (OpenTofu and providers) is cached by the lock files' hash.
+- Auth: `aws-actions/configure-aws-credentials` with `vars.SFORGE_<T>_ROLE_ARN`; `azure/login` with `vars.SFORGE_<T>_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID` (and `AZURE_SUBSCRIPTION_ID` for sforge). `ci init` prints `gh variable set` commands from the cached outputs, or says which targets to provision first.
+- Actions are pinned to commit SHAs with version comments in `packages/cli/src/ci/actions.ts`; `node scripts/ci-pins.mjs [--dry-run]` refreshes them from each action's newest `vX.Y.Z` tag. The generated files pass `actionlint` with shellcheck.
 
 ## 14. Security and quality
 - No secrets in config or state files. Credentials come from standard SDK chains (AWS profile/SSO/OIDC; `DefaultAzureCredential`).
@@ -423,6 +426,8 @@ targets: {
 Production builds for a target with `domain` use `https://<domain>/` (canonical URLs, sitemap, feeds, OG) instead of `site.baseUrl`. `targets.<n>.baseUrl` overrides it. Previews keep using `previewBaseUrl`. Without this, two targets on two domains would publish wrong canonical URLs.
 
 ### F. `sforge ci init` + release plumbing
+**Code done (2026-10-25); verification in the test repository pending (order of work, step 6).** As built: see §13. Differences from the outline below: the files are named `sforge*.yml` (so they never clobber a repository's own workflows) and rollback is its own workflow; which target deploys through an environment follows from its `ci.environments` instead of a `--production` flag; the cleanup workflow is left out when no target has previews. `scripts/publish.mjs` publishes versions with a prerelease part under the dist-tag `next` (`RELEASING.md`). The test repository `elchanio-76/sforge-ci-test` exists (public, empty) with the environment `production` and the user as its required reviewer; it has no deployment branch policy yet (suggested: `main` only), and the repository variables are set after provisioning.
+
 - **Command**: `sforge ci init [--targets aws,azure] [--production <target>] [--package-manager pnpm|npm] [--force] [--json]`, in `packages/cli/src/commands/ci.ts`, with templates in `packages/cli/src/ci/`. It writes:
   - `.github/workflows/site.yml`:
     - **PR**: build, then `check --headless --format sarif`, upload to code scanning, then preview deploy per target, then one upserted PR comment holding the preview URLs (marker `<!-- sforge-preview -->`, posted with `gh`).

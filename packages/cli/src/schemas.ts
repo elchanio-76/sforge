@@ -270,6 +270,36 @@ export function commandDataSchemas(): Record<string, Schema> {
       deleted: count('Files removed.'),
       existed: boolean(),
     }),
+    'ci init': object({
+      directory: string('Where the workflows are, relative to the repository root.'),
+      created: strings('Workflow files written, relative to the repository root.'),
+      skipped: strings('Workflow files left alone because they existed (see --force).'),
+      targets: {
+        type: 'array',
+        items: object(
+          {
+            name: targetName,
+            provider: { enum: ['aws', 'azure'] },
+            branch: string('Pushes to this branch deploy production.'),
+            previews: boolean('Pull requests get a preview deploy.'),
+          },
+          {
+            region: string(),
+            environment: string('GitHub environment the production deploy runs in.'),
+          },
+        ),
+      },
+      variables: {
+        type: 'array',
+        items: object({
+          target: targetName,
+          name: string('Repository variable the workflows read.'),
+          output: string('The provision output it holds.'),
+          value: nullable(string('Null until the target is provisioned.')),
+        }),
+      },
+      commands: strings('`gh variable set` commands for the provisioned values.'),
+    }),
     'config validate': object({
       valid: { const: true },
       path: string('The config file.'),

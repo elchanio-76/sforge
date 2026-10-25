@@ -117,10 +117,10 @@ pipeline never passes without them.
 ```yaml
 - run: npx playwright-core@1.64.1 install --with-deps --only-shell chromium
 - run: npx sforge check --format sarif --output check.sarif
-- uses: github/codeql-action/upload-sarif@v3
+- uses: github/codeql-action/upload-sarif@v4
   if: always()
   with:
     sarif_file: check.sarif
 ```
 
-`sforge ci init` (milestone M7) will generate this.
+[`sforge ci init`](ci.md) writes this job (with pinned actions) as part of its workflows.

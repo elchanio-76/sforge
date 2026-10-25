@@ -3,6 +3,7 @@ import { ErrorCode, ExitCode } from '@staticforge/core';
 import type { Runtime } from './command.js';
 import { registerBuildCommand } from './commands/build.js';
 import { registerCheckCommand } from './commands/check.js';
+import { registerCiCommand } from './commands/ci.js';
 import { registerConfigCommands } from './commands/config.js';
 import { registerDeployCommands } from './commands/deploy.js';
 import { registerDevCommand } from './commands/dev.js';
@@ -51,6 +52,7 @@ export function createProgram(runtime: Runtime): Command {
   registerIacCommand(program, runtime);
   registerDeployCommands(program, runtime);
   registerConfigCommands(program, runtime);
+  registerCiCommand(program, runtime);
   registerSchemaCommand(program, runtime);
   registerVersionCommand(program, runtime);
   registerMcpCommand(program, runtime);

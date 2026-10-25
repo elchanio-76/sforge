@@ -60,6 +60,9 @@ git tag v0.2.0
 git push origin main v0.2.0
 ```
 
+A prerelease such as `0.2.0-rc.1` (tag `v0.2.0-rc.1`) is published under the npm dist-tag `next`:
+install it with `npm i -D staticforge@next`, while `npm i staticforge` keeps the latest release.
+
 The tag starts `.github/workflows/release.yml`: it checks that the tag matches the versions,
 builds, runs the tests and the tarball smoke test, and publishes with provenance through npm
 trusted publishing (no npm token is stored anywhere). `scripts/publish.mjs` skips versions that

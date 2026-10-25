@@ -109,6 +109,7 @@ sforge versions <target>   # deployed versions and previews
 sforge rollback <target>   # serve the previous version (--to <versionId>, --yes)
 sforge preview-destroy <target> <id>
 sforge destroy <target> --confirm <target>
+sforge ci init             # GitHub Actions workflows: checks, PR previews, deploys (--targets, --force)
 sforge config validate     # validate staticforge.config.{ts,js,json,yaml}
 sforge config show         # print the resolved config with defaults
 sforge schema config       # JSON Schema of the config file

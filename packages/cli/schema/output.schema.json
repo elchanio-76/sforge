@@ -313,6 +313,26 @@
       "if": {
         "properties": {
           "command": {
+            "const": "ci init"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/ci-init-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
             "const": "config validate"
           }
         },
@@ -1455,6 +1475,123 @@
         },
         "existed": {
           "type": "boolean"
+        }
+      }
+    },
+    "ci-init-data": {
+      "type": "object",
+      "required": [
+        "directory",
+        "created",
+        "skipped",
+        "targets",
+        "variables",
+        "commands"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string",
+          "description": "Where the workflows are, relative to the repository root."
+        },
+        "created": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Workflow files written, relative to the repository root."
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Workflow files left alone because they existed (see --force)."
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "provider",
+              "branch",
+              "previews"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Target name from the config."
+              },
+              "provider": {
+                "enum": [
+                  "aws",
+                  "azure"
+                ]
+              },
+              "branch": {
+                "type": "string",
+                "description": "Pushes to this branch deploy production."
+              },
+              "previews": {
+                "type": "boolean",
+                "description": "Pull requests get a preview deploy."
+              },
+              "region": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string",
+                "description": "GitHub environment the production deploy runs in."
+              }
+            }
+          }
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "target",
+              "name",
+              "output",
+              "value"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "target": {
+                "type": "string",
+                "description": "Target name from the config."
+              },
+              "name": {
+                "type": "string",
+                "description": "Repository variable the workflows read."
+              },
+              "output": {
+                "type": "string",
+                "description": "The provision output it holds."
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "description": "Null until the target is provisioned."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "`gh variable set` commands for the provisioned values."
         }
       }
     },

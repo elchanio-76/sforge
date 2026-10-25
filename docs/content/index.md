@@ -20,6 +20,7 @@ npx sforge dev
 - [Themes](themes.md): the theme contract, template context and filters.
 - [Checking a site](checker.md): the accessibility and correctness checks, fixes and reports.
 - [Provisioning and deploying](deploy.md): AWS and Azure, versions, rollbacks and previews.
+- [GitHub Actions](ci.md): checks, previews and deploys from pull requests and the main branch.
 - [AI agents](mcp.md): the MCP server, `--json` output and its schemas.
 
 These pages are built with staticforge itself from
