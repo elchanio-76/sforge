@@ -11,9 +11,9 @@
 AWS and Azure Static Web Apps targets are available. The sections below describe AWS unless they
 say otherwise; [Azure Static Web Apps](#azure-static-web-apps) lists what differs.
 
-> Custom domains, PR previews on AWS (which need a custom domain) and the GitHub Actions
-> identities are implemented for both clouds and covered by the module tests; verifying them
-> against real accounts is part of milestone M9.
+> Custom domains (with records in Cloudflare) and PR previews on AWS are verified against real
+> accounts by the live tests. The GitHub Actions identities are covered by the module tests;
+> their verification from a real repository is part of milestone M9.
 
 ## Quick start (AWS)
 
