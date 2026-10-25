@@ -1,6 +1,6 @@
 {
   "name": "@staticforge/azure",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Azure provider for staticforge: Static Web Apps, named preview environments, rollback by rebuild",
   "keywords": [
     "staticforge",
