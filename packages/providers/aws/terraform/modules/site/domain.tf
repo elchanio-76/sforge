@@ -1,6 +1,7 @@
 # Optional custom domain: an ACM certificate in us-east-1 (required by
-# CloudFront), validated through Route 53 when hosted_zone is set. Without a
-# hosted zone, sforge creates the certificate first, prints the validation
+# CloudFront), validated through Route 53 when hosted_zone is set, or through
+# records another module creates from dns_validation_records (Cloudflare).
+# Otherwise sforge creates the certificate first, prints the validation
 # records and waits until they resolve.
 
 resource "aws_acm_certificate" "site" {
@@ -33,6 +34,11 @@ locals {
       for option in aws_acm_certificate.site[0].domain_validation_options : option if option.domain_name == name
     ])
   } : {}
+  # "x" and "*.x" share one validation record: key it by the name without "*.".
+  shared_validation = {
+    for key in toset([for name in local.certificate_names : trimprefix(name, "*.")]) :
+    key => local.validation_options[contains(local.certificate_names, key) ? key : "*.${key}"]
+  }
 }
 
 resource "aws_route53_record" "validation" {
@@ -50,7 +56,7 @@ resource "aws_acm_certificate_validation" "site" {
   count                   = local.custom_domain ? 1 : 0
   provider                = aws.us_east_1
   certificate_arn         = aws_acm_certificate.site[0].arn
-  validation_record_fqdns = var.hosted_zone == null ? null : [for record in aws_route53_record.validation : record.fqdn]
+  validation_record_fqdns = var.hosted_zone != null ? [for record in aws_route53_record.validation : record.fqdn] : var.validation_record_fqdns
 
   timeouts {
     create = "2h"

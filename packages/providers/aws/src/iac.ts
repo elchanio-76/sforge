@@ -12,7 +12,10 @@ import {
   type IacSpec,
   type PreparedTarget,
   type ProfileInput,
+  iacRef,
+  prepareDns,
   projectName,
+  withDns,
 } from '@staticforge/iac';
 import { searchPaths, securityHeaders } from '@staticforge/provider-api';
 import { type AwsClients, awsError, defaultClients, errorName, httpStatus } from './clients.js';
@@ -161,13 +164,17 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
         );
       }
 
-      if (target.dns !== undefined) {
+      if (target.dns !== undefined && target.hostedZone !== undefined) {
         throw new SforgeError(
-          ErrorCode.Unsupported,
-          `targets.${input.targetName}.dns is not supported for AWS targets yet`,
-          { hint: 'Use hostedZone (Route 53), or create the printed records yourself.' },
+          ErrorCode.ConfigInvalid,
+          `targets.${input.targetName} sets both hostedZone and dns`,
+          { hint: 'Records go either to Route 53 (hostedZone) or to the dns provider: pick one.' },
         );
       }
+      const dns = await prepareDns(
+        input,
+        [target.domain, target.previewDomain].filter((name) => name !== undefined),
+      );
 
       const oidc =
         target.ci === undefined || outputsOnly ? undefined : await chooseOidcProvider(clients, id);
@@ -209,13 +216,15 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
                 state_key: location.key,
               },
         tags,
+        // The certificate validation waits for the records the DNS module creates.
+        ...(dns && { validation_record_fqdns: iacRef('module.dns_validation.fqdns') }),
         ...input.inputs,
       };
 
       const defaultTags = [
         { tags: { ...tags, 'sforge:site': project, 'sforge:target': input.targetName } },
       ];
-      const spec: IacSpec = {
+      const site: IacSpec = {
         requiredProviders: { aws: AWS_PROVIDER },
         providers: {
           aws: [
@@ -247,6 +256,14 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
         ],
         backend: s3Backend(location, target.state.kmsKeyArn),
       };
+      // Validation and routing records are separate modules: the distribution needs the
+      // validated certificate, and the routing records need the distribution.
+      const spec = dns
+        ? withDns(site, dns, [
+            { name: 'dns_validation', records: iacRef('module.site.dns_validation_records') },
+            { name: 'dns_routing', records: iacRef('module.site.dns_routing_records') },
+          ])
+        : site;
 
       const bootstrap: IacSpec = {
         requiredProviders: { aws: AWS_PROVIDER },
@@ -275,7 +292,8 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
         // Deploys and rollbacks switch the active version with the SDK.
         expectedDrift: ['module.site.aws_cloudfrontkeyvaluestore_key.active'],
         ...(target.domain !== undefined &&
-          target.hostedZone === undefined && {
+          target.hostedZone === undefined &&
+          dns === undefined && {
             prePhase: {
               targets: ['module.site.aws_acm_certificate.site'],
               describe: describeValidation,

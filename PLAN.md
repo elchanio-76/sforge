@@ -390,6 +390,11 @@ targets: {
 - Each site module is wired to **two instances** of this module: `dns_validation` and `dns_routing`. The split avoids a dependency cycle, because the certificate has to be validated before the distribution can use it, and the routing CNAME needs the distribution's hostname.
 
 ### C. AWS (`packages/providers/aws`)
+**Code done (2026-10-25); live verification pending (order of work, step 4).** As built:
+- `modules/site` takes `validation_record_fqdns` (used when `hosted_zone` is null) and outputs `dns_validation_records` and `dns_routing_records`, maps keyed by names known when planning. `x` and `*.x` share one ACM validation record, so validation records are keyed by the name without `*.` (with `previewDomain` equal to `domain`, one record serves both; Route 53 hid this through `allow_overwrite`).
+- The profile refuses `dns` together with `hostedZone` (`SF_CONFIG_INVALID`), checks `domain` and `previewDomain` against the zone, adds `dns_validation` and `dns_routing` records modules, and skips the print-and-wait pre-phase.
+- Tests: two new `tofu test` runs (external DNS; shared validation record), `packages/providers/aws/test/iac.test.ts` (the profile's first unit tests), and the generated workspace with Cloudflare DNS validates with OpenTofu and Terraform. `docs/content/deploy.md` has a "DNS records in Cloudflare" section.
+
 - `modules/site`: new input `validation_record_fqdns` from `module.dns_validation.fqdns`, used by `aws_acm_certificate_validation` so the apply waits for the Cloudflare records. Routing records are CNAMEs: `domain` → distribution domain, and `*.<previewDomain>` → distribution domain.
 - `src/iac.ts`: with `dns`, the profile skips the pre-phase (validation records are created in the same apply) and adds the two DNS modules. The existing Route 53 (`hostedZone`) and print-and-wait paths stay as they are.
 - Verify live what M5 never ran: ACM validation, the custom domain on TLS 1.2_2021, PR previews on `pr-N.preview.aws.sforge…` (KVS host mapping), and the OIDC role used from GitHub Actions. CI reads outputs from the remote state.

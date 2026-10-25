@@ -57,6 +57,7 @@
   },
   "devDependencies": {
     "@smithy/util-stream": "^4.8.2",
+    "@staticforge/cloudflare": "workspace:*",
     "aws-sdk-client-mock": "^4.1.0"
   }
 }

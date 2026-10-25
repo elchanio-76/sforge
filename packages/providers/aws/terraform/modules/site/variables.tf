@@ -36,6 +36,12 @@ variable "preview_domain" {
   default     = null
 }
 
+variable "validation_record_fqdns" {
+  description = "Validation records created outside this module (e.g. in Cloudflare): the certificate validation waits for them. Ignored with hosted_zone; null without it means the user creates the printed records."
+  type        = list(string)
+  default     = null
+}
+
 variable "wait_for_validation" {
   description = "Wait for the ACM certificate to be validated (false only creates the certificate)."
   type        = bool

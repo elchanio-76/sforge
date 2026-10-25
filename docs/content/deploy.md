@@ -106,7 +106,9 @@ The `site` module (`packages/providers/aws/terraform/modules/site`):
   URLs and versions (see below).
 - With `domain`: an ACM certificate in us-east-1 (CloudFront requires it there) and TLS 1.2 or
   later. With `hostedZone`, Route 53 validates the certificate and gets A/AAAA alias records.
-  Without one, `provision` creates the certificate first, prints the DNS validation records,
+  With `dns`, the validation records and CNAMEs for the domain (and the preview wildcard) are
+  created in Cloudflare in the same apply ([below](#dns-records-in-cloudflare)).
+  Without either, `provision` creates the certificate first, prints the DNS validation records,
   and waits (up to 2 hours) until they resolve; `--no-wait` stops after printing them. After
   provisioning, point the domain at the distribution with the printed CNAME.
 - With `previewDomain` (requires `domain`): a wildcard certificate and aliases for
@@ -114,6 +116,34 @@ The `site` module (`packages/providers/aws/terraform/modules/site`):
 - With `logging: true`: a log bucket for CloudFront standard logs (kept 90 days).
 - With `wafWebAclArn`: the web ACL is attached to the distribution.
 - With `ci`: a GitHub Actions deploy role (below).
+
+## DNS records in Cloudflare
+
+When the zone of the custom domain is on Cloudflare, sforge can create and remove its records:
+
+```ts
+targets: {
+  staging: {
+    provider: 'aws',
+    region: 'eu-north-1',
+    domain: 'docs.example.com',
+    previewDomain: 'preview.example.com',
+    dns: { provider: 'cloudflare', zone: 'example.com' },
+  },
+}
+```
+
+- Create an API token in the Cloudflare dashboard with **Zone → DNS → Edit** and **Zone → Zone →
+  Read** on the zone (the "Edit zone DNS" template plus Zone Read) and export it as
+  `CLOUDFLARE_API_TOKEN` where you run `provision`, `status` and `destroy`. sforge never writes it
+  to a file. With `dns.zoneId` set, sforge skips the zone lookup and Zone Read is not needed.
+  Deploys only read outputs, so CI needs no Cloudflare token.
+- The records are **DNS-only**, never proxied: CloudFront terminates TLS with its own
+  certificate, and the certificate validation needs the real CNAME targets.
+- Each record carries the comment `staticforge <project>/<target>`; `destroy` removes them.
+- Do not create the records yourself: a record with the same name makes the apply fail.
+- `domain` and `previewDomain` must be inside `zone`, and `dns` cannot be combined with
+  `hostedZone`. If the zone has CAA records, they must allow `amazon.com`.
 
 ## Versions, routing and rollback
 
@@ -341,7 +371,8 @@ AWS credentials come from the SDK's default chain (`AWS_PROFILE`, SSO, environme
 both for sforge and for the engine. Azure credentials come from `DefaultAzureCredential` (`az login`,
 environment variables, managed identity, workload identity) for sforge, and the engine uses the
 Azure CLI login or the `ARM_*` variables. Missing or expired credentials, and missing permissions,
-fail with `SF_CLOUD_AUTH`.
+fail with `SF_CLOUD_AUTH`, and so does a missing or refused `CLOUDFLARE_API_TOKEN` for targets
+with `dns`.
 Other error codes: `SF_ENGINE_MISSING`, `SF_STATE_MISSING`, `SF_NOT_PROVISIONED`,
 `SF_IAC_FAILED` (with the engine's diagnostics in `details`), `SF_CONFIRMATION_REQUIRED`
 (non-interactive runs need `--yes`), `SF_DEPLOY_FAILED`, `SF_VERSION_NOT_FOUND`,

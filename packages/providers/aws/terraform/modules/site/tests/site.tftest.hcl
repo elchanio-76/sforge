@@ -257,6 +257,99 @@ run "custom_domain_with_route53_and_previews" {
   }
 }
 
+run "custom_domain_with_external_dns" {
+  command = apply
+
+  override_resource {
+    target = aws_acm_certificate.site[0]
+    values = {
+      arn = "arn:aws:acm:us-east-1:123456789012:certificate/abc"
+      domain_validation_options = [
+        {
+          domain_name           = "docs.example.com"
+          resource_record_name  = "_a1.docs.example.com."
+          resource_record_type  = "CNAME"
+          resource_record_value = "_b1.acm-validations.aws."
+        },
+        {
+          domain_name           = "*.preview.example.com"
+          resource_record_name  = "_a2.preview.example.com."
+          resource_record_type  = "CNAME"
+          resource_record_value = "_b2.acm-validations.aws."
+        },
+      ]
+    }
+  }
+
+  variables {
+    domain                  = "docs.example.com"
+    preview_domain          = "preview.example.com"
+    validation_record_fqdns = ["_a1.docs.example.com", "_a2.preview.example.com"]
+  }
+
+  assert {
+    condition     = length(aws_route53_record.validation) == 0 && length(aws_route53_record.alias) == 0
+    error_message = "Without a hosted zone, Route 53 holds nothing."
+  }
+
+  assert {
+    condition     = toset(aws_acm_certificate_validation.site[0].validation_record_fqdns) == toset(["_a1.docs.example.com", "_a2.preview.example.com"])
+    error_message = "The validation must wait for the records created outside the module."
+  }
+
+  assert {
+    condition = output.dns_validation_records == {
+      "docs.example.com"    = { name = "_a1.docs.example.com.", type = "CNAME", value = "_b1.acm-validations.aws." }
+      "preview.example.com" = { name = "_a2.preview.example.com.", type = "CNAME", value = "_b2.acm-validations.aws." }
+    }
+    error_message = "The validation records must be keyed by certificate name."
+  }
+
+  assert {
+    condition = output.dns_routing_records == {
+      "docs.example.com"      = { name = "docs.example.com", type = "CNAME", value = "d111111abcdef8.cloudfront.net" }
+      "*.preview.example.com" = { name = "*.preview.example.com", type = "CNAME", value = "d111111abcdef8.cloudfront.net" }
+    }
+    error_message = "The domain and the preview wildcard must point at CloudFront."
+  }
+}
+
+run "previews_under_the_domain_share_its_validation_record" {
+  command = apply
+
+  override_resource {
+    target = aws_acm_certificate.site[0]
+    values = {
+      arn = "arn:aws:acm:us-east-1:123456789012:certificate/abc"
+      domain_validation_options = [
+        {
+          domain_name           = "docs.example.com"
+          resource_record_name  = "_a1.docs.example.com."
+          resource_record_type  = "CNAME"
+          resource_record_value = "_b1.acm-validations.aws."
+        },
+        {
+          domain_name           = "*.docs.example.com"
+          resource_record_name  = "_a1.docs.example.com."
+          resource_record_type  = "CNAME"
+          resource_record_value = "_b1.acm-validations.aws."
+        },
+      ]
+    }
+  }
+
+  variables {
+    domain                  = "docs.example.com"
+    preview_domain          = "docs.example.com"
+    validation_record_fqdns = ["_a1.docs.example.com"]
+  }
+
+  assert {
+    condition     = keys(output.dns_validation_records) == ["docs.example.com"]
+    error_message = "One validation record serves the domain and its wildcard."
+  }
+}
+
 run "ci_role_pinned_to_repo" {
   command = apply
 

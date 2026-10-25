@@ -60,6 +60,28 @@ output "dns_records" {
   }]
 }
 
+output "dns_validation_records" {
+  description = "The validation records keyed by a name known when planning, for a DNS module to create."
+  value = {
+    for key, option in local.shared_validation : key => {
+      name  = option.resource_record_name
+      type  = option.resource_record_type
+      value = option.resource_record_value
+    }
+  }
+}
+
+output "dns_routing_records" {
+  description = "dns_records keyed by name, for a DNS module to create."
+  value = {
+    for name in local.aliases : name => {
+      name  = name
+      type  = "CNAME"
+      value = aws_cloudfront_distribution.site.domain_name
+    }
+  }
+}
+
 output "ci_role_arn" {
   value = local.ci == null ? null : aws_iam_role.ci[0].arn
 }

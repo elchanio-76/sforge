@@ -484,6 +484,9 @@ importers:
       '@smithy/util-stream':
         specifier: ^4.8.2
         version: 4.8.2
+      '@staticforge/cloudflare':
+        specifier: workspace:*
+        version: link:../cloudflare
       aws-sdk-client-mock:
         specifier: ^4.1.0
         version: 4.1.0

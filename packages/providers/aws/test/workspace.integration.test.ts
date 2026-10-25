@@ -9,6 +9,7 @@ import { CloudFrontKeyValueStoreClient } from '@aws-sdk/client-cloudfront-keyval
 import { mockClient } from 'aws-sdk-client-mock';
 import { describe, expect, it } from 'vitest';
 import { createLogger, validateConfig } from '@staticforge/core';
+import { createCloudflareDns } from '@staticforge/cloudflare';
 import { init, resolveEngine, runEngine, workspaceDir, writeWorkspace } from '@staticforge/iac';
 import { createAwsIacProfile } from '../src/index.js';
 
@@ -53,6 +54,13 @@ describe.runIf(process.env.SFORGE_IAC_TESTS === '1')('generated AWS workspaces',
             previewDomain: 'preview.example.com',
             ci: { repo: 'acme/docs', environments: ['staging'] },
           },
+          cloudflare: {
+            provider: 'aws',
+            region: 'eu-central-1',
+            domain: 'aws.docs.example.com',
+            previewDomain: 'preview.aws.docs.example.com',
+            dns: { provider: 'cloudflare', zone: 'example.com', zoneId: 'a'.repeat(32) },
+          },
         },
       });
       const rootDir = mkdtempSync(join(tmpdir(), 'sforge-aws-ws-'));
@@ -64,9 +72,19 @@ describe.runIf(process.env.SFORGE_IAC_TESTS === '1')('generated AWS workspaces',
         env: process.env,
         logger,
       });
+      const withDns = await createAwsIacProfile(clients).prepare({
+        rootDir,
+        config,
+        targetName: 'cloudflare',
+        target: config.targets.cloudflare!,
+        env: { CLOUDFLARE_API_TOKEN: 'unused' },
+        logger,
+        dns: createCloudflareDns(),
+      });
       for (const [name, spec] of [
         ['staging', prepared.spec],
         ['state', prepared.state.bootstrap],
+        ['cloudflare', withDns.spec],
       ] as const) {
         const dir = workspaceDir(rootDir, name);
         writeWorkspace({ dir, spec, vendor: name === 'state' });
