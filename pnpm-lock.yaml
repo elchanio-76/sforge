@@ -440,6 +440,10 @@ importers:
       chokidar:
         specifier: ^5.0.0
         version: 5.0.0
+    devDependencies:
+      playwright-core:
+        specifier: ^1.64.1
+        version: 1.64.1
 
   packages/providers/aws:
     dependencies:

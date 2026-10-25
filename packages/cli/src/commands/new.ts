@@ -1,5 +1,4 @@
 import { Argument, Option, type Command } from 'commander';
-import { newContent } from '@staticforge/build';
 import { type Runtime, action } from '../command.js';
 import { loadProjectConfig } from '../project.js';
 
@@ -20,6 +19,7 @@ export function registerNewCommand(program: Command, runtime: Runtime): void {
     .option('--force', 'overwrite an existing file')
     .action(
       action(runtime, async (ctx, { args, options }) => {
+        const { newContent } = await import('@staticforge/build');
         const { config, rootDir } = await loadProjectConfig(ctx);
         const result = newContent({
           rootDir,

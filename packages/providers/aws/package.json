@@ -1,8 +1,26 @@
 {
   "name": "@staticforge/aws",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "AWS provider for staticforge: private S3 + CloudFront (OAC), KeyValueStore versions, previews",
+  "keywords": [
+    "staticforge",
+    "aws",
+    "s3",
+    "cloudfront",
+    "opentofu",
+    "terraform"
+  ],
+  "homepage": "https://github.com/elchanio-76/sforge#readme",
+  "bugs": {
+    "url": "https://github.com/elchanio-76/sforge/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elchanio-76/sforge.git",
+    "directory": "packages/providers/aws"
+  },
   "license": "MIT",
+  "author": "Eleftherios Chaniotakis",
   "type": "module",
   "exports": {
     ".": {
@@ -16,10 +34,14 @@
     "terraform/**/*.tf",
     "terraform/**/*.js",
     "terraform/**/*.hcl",
-    "!terraform/**/.terraform.lock.hcl"
+    "!terraform/**/.terraform.lock.hcl",
+    "!terraform/**/tests/**"
   ],
   "engines": {
     "node": "^22.22.0 || >=24.8.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront": "^3.1138.0",

@@ -1,4 +1,4 @@
-import { checkReportJsonSchema } from '@staticforge/checker';
+import { checkReportJsonSchema } from '@staticforge/checker/report-schema';
 import { diagnosticJsonSchema } from '@staticforge/core';
 
 /**

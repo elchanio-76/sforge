@@ -1,0 +1,39 @@
+name: Release
+
+# Publishes every package to npm when a version tag (v0.1.0) is pushed. npm trusted
+# publishing authenticates the workflow with OIDC: there is no npm token, and each
+# package gets a provenance statement. See RELEASING.md.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Use an npm with trusted publishing (11.5.1 or later)
+        run: npm install --global npm@11
+      - run: pnpm install --frozen-lockfile
+      - name: Check that the tag matches the package versions
+        run: test "v$(node -p "require('./packages/cli/package.json').version")" = "$GITHUB_REF_NAME"
+      - name: Install Chromium for headless checks
+        run: pnpm --filter @staticforge/checker exec playwright-core install --with-deps --only-shell chromium
+      - run: pnpm build
+      - run: pnpm test
+      - run: pnpm test:pack
+      - name: Publish
+        run: node scripts/publish.mjs --provenance

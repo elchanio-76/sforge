@@ -1,4 +1,4 @@
-import { HtmlValidate } from 'html-validate';
+import { type ConfigData, HtmlValidate, StaticConfigLoader } from 'html-validate';
 import type { CheckPage, Finding } from './types.js';
 
 /**
@@ -43,26 +43,46 @@ const COVERED: [string, string][] = [
   ['element-required-attributes', '<iframe> is missing required "title"'], // iframe-title
 ];
 
+/**
+ * html-validate resolves (and schema-validates) its config for every file,
+ * which took more than half of the time per page. One config applies to all
+ * pages, so it is resolved once.
+ */
+class ResolvedOnceLoader extends StaticConfigLoader {
+  private resolved: ReturnType<StaticConfigLoader['getConfigFor']> | undefined;
+
+  override getConfigFor(
+    handle: string,
+    configOverride?: ConfigData,
+  ): ReturnType<StaticConfigLoader['getConfigFor']> {
+    if (configOverride !== undefined) return super.getConfigFor(handle, configOverride);
+    this.resolved ??= super.getConfigFor(handle);
+    return this.resolved;
+  }
+}
+
 let validator: HtmlValidate | undefined;
 
 function getValidator(): HtmlValidate {
-  validator ??= new HtmlValidate({
-    extends: ['html-validate:standard', 'html-validate:a11y', 'html-validate:document'],
-    rules: {
-      // Subresource integrity only protects resources from other origins.
-      'require-sri': ['error', { target: 'crossorigin' }],
-      // Covered by the document-title rule, which can also fix it.
-      'empty-title': 'off',
-      // Not accessibility problems: worth knowing, not worth failing a build.
-      'long-title': 'warn',
-      'no-implicit-button-type': 'warn',
-      'no-redundant-role': 'warn',
-      'prefer-button': 'warn',
-      'prefer-native-element': 'warn',
-      'prefer-tbody': 'warn',
-      'tel-non-breaking': 'warn',
-    },
-  });
+  validator ??= new HtmlValidate(
+    new ResolvedOnceLoader({
+      extends: ['html-validate:standard', 'html-validate:a11y', 'html-validate:document'],
+      rules: {
+        // Subresource integrity only protects resources from other origins.
+        'require-sri': ['error', { target: 'crossorigin' }],
+        // Covered by the document-title rule, which can also fix it.
+        'empty-title': 'off',
+        // Not accessibility problems: worth knowing, not worth failing a build.
+        'long-title': 'warn',
+        'no-implicit-button-type': 'warn',
+        'no-redundant-role': 'warn',
+        'prefer-button': 'warn',
+        'prefer-native-element': 'warn',
+        'prefer-tbody': 'warn',
+        'tel-non-breaking': 'warn',
+      },
+    }),
+  );
   return validator;
 }
 

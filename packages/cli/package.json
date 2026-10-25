@@ -1,8 +1,31 @@
 {
   "name": "staticforge",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "CLI-first static site generator with accessibility checking and multi-cloud deploys",
+  "keywords": [
+    "staticforge",
+    "static-site-generator",
+    "ssg",
+    "accessibility",
+    "wcag",
+    "cli",
+    "mcp",
+    "aws",
+    "cloudfront",
+    "azure",
+    "static-web-apps"
+  ],
+  "homepage": "https://github.com/elchanio-76/sforge#readme",
+  "bugs": {
+    "url": "https://github.com/elchanio-76/sforge/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elchanio-76/sforge.git",
+    "directory": "packages/cli"
+  },
   "license": "MIT",
+  "author": "Eleftherios Chaniotakis",
   "type": "module",
   "bin": {
     "sforge": "./dist/bin.js"
@@ -20,6 +43,9 @@
   ],
   "engines": {
     "node": "^22.22.0 || >=24.8.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.4.0",

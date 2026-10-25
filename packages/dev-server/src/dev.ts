@@ -2,13 +2,15 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { type FSWatcher, watch } from 'chokidar';
-import { type BuildResult, buildSite } from '@staticforge/build';
-import { checkBuild, finalizeDiagnostics } from '@staticforge/checker';
+import { BuildCache, type BuildResult, buildSite } from '@staticforge/build';
+import { CheckCache, checkBuild, finalizeDiagnostics } from '@staticforge/checker';
 import {
   type Diagnostic,
   type LoadedConfig,
   type Logger,
   type SerializedError,
+  createWorkerPool,
+  poolSize,
   toSforgeError,
 } from '@staticforge/core';
 import { type StaticServer, startStaticServer } from '@staticforge/server';
@@ -66,6 +68,12 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
   const rootDir = loaded.rootDir;
   const scratch = mkdtempSync(join(tmpdir(), 'sforge-dev-'));
   const live = new LiveReload();
+  // One pool for the server's lifetime, so rebuilds find their workers warm.
+  const size = poolSize(loaded.config.build.workers);
+  const pool = size > 0 ? createWorkerPool(size) : undefined;
+  // Rebuilds parse and render only what changed.
+  const cache = new BuildCache();
+  const checkCache = new CheckCache();
 
   let servedDir = join(scratch, 'empty');
   let buildCount = 0;
@@ -97,6 +105,7 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
     }
 
     const outDir = join(scratch, `build-${id}`);
+    let writeSearchIndex: (() => Promise<void>) | undefined;
     try {
       const result = await buildSite({
         rootDir,
@@ -106,6 +115,12 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
         // output helps debugging.
         fingerprint: false,
         minify: false,
+        ...(pool && { pool }),
+        cache,
+        // The pages are served before the search index is written.
+        deferSearch: (write) => {
+          writeSearchIndex = write;
+        },
         ...(options.drafts !== undefined && { drafts: options.drafts }),
         ...(options.generator !== undefined && { generator: options.generator }),
         ...(logger !== undefined && { logger }),
@@ -126,6 +141,8 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
           config: loaded.config,
           build: result,
           headless: false,
+          ...(pool && { pool }),
+          cache: checkCache,
         });
         diagnostics = finalizeDiagnostics(checked.findings, loaded.config.check.ignore);
       }
@@ -135,6 +152,14 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
       state = { id, ok: false, changed, diagnostics: [], error: toSforgeError(error).toJSON() };
     }
     publish(changed.length > 0 && changed.every((path) => path.endsWith('.css')));
+    void writeSearchIndex?.().catch((error: unknown) => {
+      // A newer build may already have replaced (and removed) this one.
+      if (servedDir === outDir) {
+        logger?.warn(
+          `Search index failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    });
   };
 
   const finish = () => {
@@ -206,6 +231,7 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
   } catch (error) {
     await watcher.close();
     live.close();
+    await pool?.close();
     rmSync(scratch, { recursive: true, force: true });
     throw error;
   }
@@ -223,6 +249,7 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
       await watcher.close();
       live.close();
       await server.close();
+      await pool?.close();
       rmSync(scratch, { recursive: true, force: true });
     },
   };

@@ -1,5 +1,3 @@
-import { createAwsProvider } from '@staticforge/aws';
-import { createAzureProvider } from '@staticforge/azure';
 import {
   type LoadedConfig,
   type TargetConfig,
@@ -18,11 +16,16 @@ import type { Runtime } from './command.js';
 import type { CommandContext } from './context.js';
 import { loadProjectConfigAt } from './project.js';
 
-/** The provider of a target; tests inject fakes through the runtime. */
-export function providerFor(runtime: Runtime, target: TargetConfig): Provider {
+/**
+ * The provider of a target; tests inject fakes through the runtime. Providers
+ * are loaded on demand: their cloud SDKs would slow down every other command.
+ */
+export async function providerFor(runtime: Runtime, target: TargetConfig): Promise<Provider> {
   const injected = runtime.providers?.[target.provider];
   if (injected !== undefined) return injected;
-  return target.provider === 'aws' ? createAwsProvider() : createAzureProvider();
+  return target.provider === 'aws'
+    ? (await import('@staticforge/aws')).createAwsProvider()
+    : (await import('@staticforge/azure')).createAzureProvider();
 }
 
 export interface TargetContext {
@@ -33,15 +36,15 @@ export interface TargetContext {
   iac: IacRunOptions;
 }
 
-export function targetContext(
+export async function targetContext(
   runtime: Runtime,
   ctx: CommandContext,
   loaded: LoadedConfig,
   targetName: string,
   localState = false,
-): TargetContext {
+): Promise<TargetContext> {
   const target = getTarget(loaded.config, targetName);
-  const provider = providerFor(runtime, target);
+  const provider = await providerFor(runtime, target);
   return {
     loaded,
     targetName,

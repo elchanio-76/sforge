@@ -1,19 +1,19 @@
 import type { Command } from 'commander';
-import { type DevBuildState, problemsOf, startDevServer } from '@staticforge/dev-server';
-import { type Logger, formatDiagnostic } from '@staticforge/core';
+import type { DevBuildState } from '@staticforge/dev-server';
+import { type Diagnostic, type Logger, formatDiagnostic } from '@staticforge/core';
 import { openBrowser } from '../browser.js';
 import { type Runtime, action } from '../command.js';
 import { loadProjectConfig } from '../project.js';
 import { type ServerFlags, addServerOptions, hostFrom } from '../server-options.js';
 import { VERSION } from '../version.js';
+import { addWorkersOption, withWorkers } from '../workers.js';
 
-function logBuild(state: DevBuildState, logger: Logger): void {
+function logBuild(state: DevBuildState, problems: Diagnostic[], logger: Logger): void {
   if (state.error !== undefined) {
     logger.error(`Build failed: ${state.error.message}`);
     if (state.error.hint !== undefined) logger.info(`hint: ${state.error.hint}`);
     return;
   }
-  const problems = problemsOf(state);
   for (const d of problems) {
     if (d.severity === 'error') logger.error(formatDiagnostic(d));
     else logger.warn(formatDiagnostic(d));
@@ -31,24 +31,30 @@ function logBuild(state: DevBuildState, logger: Logger): void {
 
 export function registerDevCommand(program: Command, runtime: Runtime): void {
   addServerOptions(
-    program
-      .command('dev')
-      .description(
-        'Build and serve the site locally, rebuilding and reloading the browser on changes',
-      )
-      .option('--drafts', 'include pages marked draft: true'),
+    addWorkersOption(
+      program
+        .command('dev')
+        .description(
+          'Build and serve the site locally, rebuilding and reloading the browser on changes',
+        )
+        .option('--drafts', 'include pages marked draft: true'),
+    ),
     4321,
   ).action(
     action(runtime, async (ctx, { options }) => {
+      const { problemsOf, startDevServer } = await import('@staticforge/dev-server');
       const flags = options as unknown as ServerFlags & { drafts?: boolean };
       const server = await startDevServer({
-        loadConfig: () => loadProjectConfig(ctx),
+        loadConfig: async () => {
+          const loaded = await loadProjectConfig(ctx);
+          return { ...loaded, config: withWorkers(loaded.config, options) };
+        },
         host: hostFrom(flags, ctx.logger),
         port: flags.port,
         ...(flags.drafts === true && { drafts: true }),
         generator: `staticforge ${VERSION}`,
         logger: ctx.logger,
-        onBuild: (state) => logBuild(state, ctx.logger),
+        onBuild: (state) => logBuild(state, problemsOf(state), ctx.logger),
       });
       if (flags.open && ctx.interactive) openBrowser(server.url);
 

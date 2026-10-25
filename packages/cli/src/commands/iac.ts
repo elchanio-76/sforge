@@ -1,5 +1,5 @@
 import { Argument, type Command } from 'commander';
-import { type PassthroughCommand, passthrough, prepareWorkspace } from '@staticforge/iac';
+import type { PassthroughCommand } from '@staticforge/iac';
 import { type Runtime, action } from '../command.js';
 import { targetContext } from '../cloud.js';
 import { displayPath } from '../paths.js';
@@ -37,9 +37,10 @@ export function registerIacCommand(program: Command, runtime: Runtime): void {
     )
     .action(
       action<Record<string, unknown>>(runtime, async (ctx, { args, options }) => {
+        const { passthrough, prepareWorkspace } = await import('@staticforge/iac');
         const [command, name, extra] = args as [string, string, string[]];
         const loaded = await loadProjectConfig(ctx);
-        const target = targetContext(
+        const target = await targetContext(
           runtime,
           ctx,
           loaded,

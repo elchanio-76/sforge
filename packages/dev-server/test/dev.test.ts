@@ -40,6 +40,17 @@ describe('startDevServer', () => {
     expect(existsSync(join(rootDir, 'dist'))).toBe(false);
   });
 
+  it('writes the search index after serving each build', { timeout: 30_000 }, async () => {
+    const { rootDir, server } = await start({ 'content/index.md': '# Findable\n' });
+    const index = async () => (await fetch(`${server.url}/pagefind/pagefind.js`)).status;
+    await expect.poll(index, { timeout: 10_000 }).toBe(200);
+
+    const next = server.nextBuild();
+    writeFileSync(join(rootDir, 'content/index.md'), '# Findable again\n');
+    await next;
+    await expect.poll(index, { timeout: 10_000 }).toBe(200);
+  });
+
   it('rebuilds on content changes and tells connected browsers to reload', async () => {
     const { rootDir, server } = await start({ 'content/index.md': '# One\n' });
     const events = readEvents(`${server.url}/__sforge/events`, (e) => e.length === 2);

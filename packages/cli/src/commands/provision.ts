@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { ErrorCode, SforgeError } from '@staticforge/core';
-import { type ProvisionResult, destroy, detectDrift, provision } from '@staticforge/iac';
+import type { ProvisionResult } from '@staticforge/iac';
 import { type Runtime, action } from '../command.js';
 import { confirmer, formatPlan, targetContext, truthy } from '../cloud.js';
 import { displayPath } from '../paths.js';
@@ -66,13 +66,14 @@ export function registerProvisionCommands(program: Command, runtime: Runtime): v
     .action(
       action(runtime, async (ctx, { args, options }) => {
         const loaded = await loadProjectConfig(ctx);
-        const target = targetContext(
+        const target = await targetContext(
           runtime,
           ctx,
           loaded,
           args[0] as string,
           localStateFrom(options, ctx.io.env),
         );
+        const { provision } = await import('@staticforge/iac');
         const result = await provision({
           ...target.iac,
           diff: options.diff === true,
@@ -93,13 +94,14 @@ export function registerProvisionCommands(program: Command, runtime: Runtime): v
     .action(
       action(runtime, async (ctx, { args, options }) => {
         const loaded = await loadProjectConfig(ctx);
-        const target = targetContext(
+        const target = await targetContext(
           runtime,
           ctx,
           loaded,
           args[0] as string,
           localStateFrom(options, ctx.io.env),
         );
+        const { detectDrift } = await import('@staticforge/iac');
         const drift = await detectDrift(target.iac);
         let versionId: string | null = null;
         try {
@@ -148,13 +150,14 @@ export function registerProvisionCommands(program: Command, runtime: Runtime): v
           );
         }
         const loaded = await loadProjectConfig(ctx);
-        const target = targetContext(
+        const target = await targetContext(
           runtime,
           ctx,
           loaded,
           name,
           localStateFrom(options, ctx.io.env),
         );
+        const { destroy } = await import('@staticforge/iac');
         const result = await destroy(target.iac);
         return {
           data: result,

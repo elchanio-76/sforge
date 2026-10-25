@@ -1,6 +1,5 @@
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
-import { startPreviewServer } from '@staticforge/dev-server';
 import { openBrowser } from '../browser.js';
 import { type Runtime, action } from '../command.js';
 import { displayPath } from '../paths.js';
@@ -16,6 +15,7 @@ export function registerPreviewCommand(program: Command, runtime: Runtime): void
     4322,
   ).action(
     action(runtime, async (ctx, { options }) => {
+      const { startPreviewServer } = await import('@staticforge/dev-server');
       const flags = options as unknown as ServerFlags & { dir?: string };
       const { config, rootDir } = await loadProjectConfig(ctx);
       const dir = resolve(

@@ -71,6 +71,8 @@ Root-relative URLs (`/assets/site.css`) and absolute URLs are left as they are. 
 
 **Code blocks** with a language (` ```ts `) are highlighted with light and dark themes. Unknown languages render as plain text.
 
+**Wide tables and code blocks** scroll sideways instead of widening the page. They are made focusable, so keyboard users can scroll them too; a table with a `<caption>` becomes a region named after it.
+
 ## HTML files
 
 - An HTML **fragment** (no `<!doctype>` or `<html>`) is wrapped in the theme layout, like Markdown.
@@ -148,3 +150,16 @@ marked `data-pagefind-body` is indexed (the default theme marks page and post bo
 `/sitemap.xml` lists every page except the 404 page, the search page and pages with
 `sitemap: false`, with `updated` or `date` as the last modification. `/robots.txt` allows everything
 and points to the sitemap, unless the project has its own `static/robots.txt`.
+
+## Large sites
+
+Builds and checks parse, render and validate pages in worker threads when a site has 100 pages
+or more: `build.workers` sets how many (`"auto"`, the default, uses all cores but one, at most
+8), `--workers <n>` overrides it for one command, and `SFORGE_WORKERS=0` keeps everything in the
+main thread. The output is the same either way.
+
+`sforge dev` keeps its workers and the results of earlier builds while it runs, so a rebuild only
+parses the pages whose sources changed and renders the pages whose content, layout data or
+templates changed. A new title or tag changes navigation and lists on many pages, and a new or
+removed page changes what links resolve to, so those rebuilds do more. The dev server writes the
+search index after it starts serving each build; `--verbose` shows how long each build phase took.

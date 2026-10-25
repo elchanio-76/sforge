@@ -5,11 +5,17 @@
 - builds accessible, well-formed HTML from Markdown or HTML content and a theme, with
   collections, tags, RSS/Atom feeds, a sitemap, responsive images and client-side search,
 - checks the output against WCAG 2.2 AA, with optional autofix,
-- serves a local preview,
+- serves a local preview with live reload and fast incremental rebuilds,
 - provisions and deploys to AWS (private S3 + CloudFront) and Azure Static Web Apps,
 - offers all of this to AI agents as an MCP server, and to scripts as JSON with schemas.
 
-> **Status:** early development (milestone M7: MCP server and JSON schemas). See [PLAN.md](PLAN.md) for the design and roadmap.
+> **Status:** early development (milestone M8: hardening and the first npm release). See [PLAN.md](PLAN.md) for the design and roadmap.
+
+## Install
+
+```sh
+npm install --save-dev staticforge    # Node.js 22.22+ or 24.8+; then run it as `npx sforge`
+```
 
 ## Development
 
@@ -21,7 +27,14 @@ pnpm build          # tsc project references → packages/*/dist
 pnpm test           # vitest; runs against TypeScript sources, no build needed
 pnpm lint && pnpm format:check
 pnpm sforge --help  # run the built CLI
+pnpm bench          # build, check and dev-rebuild timings on a synthetic 2,000-page site
+pnpm test:pack      # install the packed packages into a new project and use them
+pnpm test:iac       # validate the generated OpenTofu/Terraform workspaces
+pnpm test:live      # the full cloud cycle in a sandbox account (see docs/content/deploy.md)
+pnpm sforge check --cwd docs --headless   # the documentation is a staticforge site
 ```
+
+Releases: see [RELEASING.md](RELEASING.md).
 
 After changing the config schema or the `--json` data of a command, run `pnpm schema:generate`
 to refresh the schemas in `packages/cli/schema/` (a test fails if they are stale).
@@ -42,11 +55,11 @@ sforge deploy staging   # build, check, upload a new version and switch to it
 claude mcp add sforge -- npx sforge mcp      # let an AI agent build, check and fix the site
 ```
 
-See [docs/content.md](docs/content.md) for project layout, URLs, front-matter and links,
-[docs/themes.md](docs/themes.md) for the theme contract and template context, and
-[docs/checker.md](docs/checker.md) for the checks, fixes and reports,
-[docs/deploy.md](docs/deploy.md) for provisioning, deploys, versions, previews and CI roles, and
-[docs/mcp.md](docs/mcp.md) for the MCP server, `--json` output and its schemas.
+See [docs/content/content.md](docs/content/content.md) for project layout, URLs, front-matter and links,
+[docs/content/themes.md](docs/content/themes.md) for the theme contract and template context, and
+[docs/content/checker.md](docs/content/checker.md) for the checks, fixes and reports,
+[docs/content/deploy.md](docs/content/deploy.md) for provisioning, deploys, versions, previews and CI roles, and
+[docs/content/mcp.md](docs/content/mcp.md) for the MCP server, `--json` output and its schemas.
 [examples/basic-site](examples/basic-site) shows every content type.
 
 ## Packages
@@ -112,7 +125,7 @@ Both listen on 127.0.0.1 unless `--host` is given.
 `sforge build --json` and `sforge check --json` report diagnostics
 (`{ ruleId, severity, message, file?, line?, column?, url?, selector?, wcag?, fixable?, hint?, helpUrl? }`)
 and exit with code 1 if any are errors (for `check`: at or above `check.failOn`).
-The rendered checks need Chromium; see [docs/checker.md](docs/checker.md#chromium).
+The rendered checks need Chromium; see [docs/content/checker.md](docs/content/checker.md#chromium).
 
 ## Configuration
 

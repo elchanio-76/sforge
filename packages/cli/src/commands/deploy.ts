@@ -1,15 +1,23 @@
 import { join, resolve } from 'node:path';
 import type { Command } from 'commander';
-import { buildSite } from '@staticforge/build';
-import { type CheckBuildOptions, checkBuild, finalizeDiagnostics } from '@staticforge/checker';
-import { ErrorCode, SforgeError, countBySeverity, formatDiagnostic } from '@staticforge/core';
-import { assertPreviewId, type DeployResult } from '@staticforge/provider-api';
+import type { CheckBuildOptions } from '@staticforge/checker';
+import {
+  ErrorCode,
+  SforgeError,
+  type WorkerPool,
+  countBySeverity,
+  createWorkerPool,
+  formatDiagnostic,
+  poolSize,
+} from '@staticforge/core';
+import type { DeployResult } from '@staticforge/provider-api';
 import { type Runtime, action } from '../command.js';
 import { confirmAction, deployerFor, targetContext, truthy } from '../cloud.js';
 import type { CommandContext } from '../context.js';
 import { displayPath } from '../paths.js';
 import { loadProjectConfig } from '../project.js';
 import { VERSION } from '../version.js';
+import { addWorkersOption, withWorkers } from '../workers.js';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -33,8 +41,12 @@ function describeDeploy(result: DeployResult): string {
 /** Run the checker on a finished build; throw SF_CHECK_FAILED at or above check.failOn. */
 async function checkBeforeDeploy(
   ctx: CommandContext,
-  options: Pick<CheckBuildOptions, 'rootDir' | 'config' | 'build'> & { headless?: boolean },
+  options: Pick<CheckBuildOptions, 'rootDir' | 'config' | 'build'> & {
+    headless?: boolean;
+    pool?: WorkerPool;
+  },
 ) {
+  const { checkBuild, finalizeDiagnostics } = await import('@staticforge/checker');
   const { config } = options;
   const headless = options.headless ?? config.check.headless;
   const checked = await checkBuild({
@@ -44,6 +56,7 @@ async function checkBeforeDeploy(
     headless,
     requireBrowser: options.headless === true || truthy(ctx.io.env.CI),
     ...(ctx.io.env.SFORGE_CHROMIUM_PATH && { executablePath: ctx.io.env.SFORGE_CHROMIUM_PATH }),
+    ...(options.pool && { pool: options.pool }),
     logger: ctx.logger,
   });
   const diagnostics = finalizeDiagnostics(checked.findings, config.check.ignore);
@@ -67,31 +80,38 @@ async function checkBeforeDeploy(
 }
 
 export function registerDeployCommands(program: Command, runtime: Runtime): void {
-  program
-    .command('deploy')
-    .description('Build, check and deploy the site to a provisioned target')
-    .argument('<target>', 'target name from the config')
-    .option('--preview <id>', 'deploy a PR preview (e.g. pr-42) instead of production')
-    .option('--no-build', 'deploy the existing build in build.outDir')
-    .option('--no-check', 'deploy even if `sforge check` would fail')
-    .option('--headless', 'run rendered checks in headless Chromium (default: check.headless)')
-    .option('--no-headless', 'skip rendered checks')
-    .option('--invalidate', 'invalidate the CDN cache afterwards (normally unnecessary)')
-    .option('--dry-run', 'show what would be uploaded, change nothing')
-    .action(
-      action(runtime, async (ctx, { args, options }) => {
-        const loaded = await loadProjectConfig(ctx);
-        const { config, rootDir } = loaded;
-        const target = targetContext(runtime, ctx, loaded, args[0] as string);
-        const preview = options.preview as string | undefined;
-        if (preview !== undefined) assertPreviewId(preview);
-        const deployer = await deployerFor(ctx, target);
+  addWorkersOption(
+    program
+      .command('deploy')
+      .description('Build, check and deploy the site to a provisioned target')
+      .argument('<target>', 'target name from the config')
+      .option('--preview <id>', 'deploy a PR preview (e.g. pr-42) instead of production')
+      .option('--no-build', 'deploy the existing build in build.outDir')
+      .option('--no-check', 'deploy even if `sforge check` would fail')
+      .option('--headless', 'run rendered checks in headless Chromium (default: check.headless)')
+      .option('--no-headless', 'skip rendered checks')
+      .option('--invalidate', 'invalidate the CDN cache afterwards (normally unnecessary)')
+      .option('--dry-run', 'show what would be uploaded, change nothing'),
+  ).action(
+    action(runtime, async (ctx, { args, options }) => {
+      const loaded = await loadProjectConfig(ctx);
+      const { rootDir } = loaded;
+      const config = withWorkers(loaded.config, options);
+      const target = await targetContext(runtime, ctx, loaded, args[0] as string);
+      const preview = options.preview as string | undefined;
+      if (preview !== undefined)
+        (await import('@staticforge/provider-api')).assertPreviewId(preview);
+      const deployer = await deployerFor(ctx, target);
 
-        const outDir = resolve(rootDir, config.build.outDir);
-        const previewBaseUrl =
-          preview === undefined ? undefined : deployer.previewBaseUrl?.(preview);
-        let check: Awaited<ReturnType<typeof checkBeforeDeploy>> | undefined;
-        if (options.build !== false) {
+      const outDir = resolve(rootDir, config.build.outDir);
+      const previewBaseUrl = preview === undefined ? undefined : deployer.previewBaseUrl?.(preview);
+      let check: Awaited<ReturnType<typeof checkBeforeDeploy>> | undefined;
+      if (options.build !== false) {
+        // One pool for the build and the check.
+        const size = poolSize(config.build.workers);
+        const pool = size > 0 ? createWorkerPool(size) : undefined;
+        try {
+          const { buildSite } = await import('@staticforge/build');
           // Previews get their own canonical URLs, feeds and sitemap.
           const build = await buildSite({
             rootDir,
@@ -99,6 +119,7 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
             ...(previewBaseUrl !== undefined && { baseUrl: previewBaseUrl }),
             generator: `staticforge ${VERSION}`,
             logger: ctx.logger,
+            ...(pool && { pool }),
           });
           if (!build.ok) {
             throw new SforgeError(ErrorCode.CheckFailed, 'The build failed; nothing was deployed', {
@@ -111,24 +132,28 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
               config,
               build,
               ...(options.headless !== undefined && { headless: options.headless as boolean }),
+              ...(pool && { pool }),
             });
           }
-        } else {
-          ctx.logger.warn('--no-build: deploying the existing build, which is not checked again');
+        } finally {
+          await pool?.close();
         }
+      } else {
+        ctx.logger.warn('--no-build: deploying the existing build, which is not checked again');
+      }
 
-        const result = await deployer.deploy({
-          buildDir: outDir,
-          ...(preview !== undefined && { preview }),
-          invalidate: options.invalidate === true,
-          dryRun: options.dryRun === true,
-        });
-        return {
-          data: { ...result, buildDir: outDir, ...(check && { check }) },
-          text: `${describeDeploy(result)}\nBuild: ${displayPath(ctx.cwd, join(outDir))}`,
-        };
-      }),
-    );
+      const result = await deployer.deploy({
+        buildDir: outDir,
+        ...(preview !== undefined && { preview }),
+        invalidate: options.invalidate === true,
+        dryRun: options.dryRun === true,
+      });
+      return {
+        data: { ...result, buildDir: outDir, ...(check && { check }) },
+        text: `${describeDeploy(result)}\nBuild: ${displayPath(ctx.cwd, join(outDir))}`,
+      };
+    }),
+  );
 
   program
     .command('versions')
@@ -137,7 +162,7 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
     .action(
       action(runtime, async (ctx, { args }) => {
         const loaded = await loadProjectConfig(ctx);
-        const target = targetContext(runtime, ctx, loaded, args[0] as string);
+        const target = await targetContext(runtime, ctx, loaded, args[0] as string);
         const versions = await (await deployerFor(ctx, target)).versions();
         const rows = versions.map(
           (v) =>
@@ -163,7 +188,7 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
     .action(
       action(runtime, async (ctx, { args, options }) => {
         const loaded = await loadProjectConfig(ctx);
-        const target = targetContext(runtime, ctx, loaded, args[0] as string);
+        const target = await targetContext(runtime, ctx, loaded, args[0] as string);
         const deployer = await deployerFor(ctx, target);
         const to = options.to as string | undefined;
         await confirmAction(
@@ -187,7 +212,7 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
     .action(
       action(runtime, async (ctx, { args }) => {
         const loaded = await loadProjectConfig(ctx);
-        const target = targetContext(runtime, ctx, loaded, args[0] as string);
+        const target = await targetContext(runtime, ctx, loaded, args[0] as string);
         const result = await (await deployerFor(ctx, target)).destroyPreview(args[1] as string);
         return {
           data: result,

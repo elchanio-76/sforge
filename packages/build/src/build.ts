@@ -1,22 +1,20 @@
-import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { linkSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import type { Element, Root } from 'hast';
 import { h } from 'hastscript';
 import { toHtml } from 'hast-util-to-html';
 import { type SearchPage, writeSearchIndex } from '@staticforge/assets';
-import {
-  type ParsedContent,
-  type PreparedSource,
-  createReport,
-  parseContent,
-  prepareSource,
-} from '@staticforge/content';
+import { type PreparedSource, createReport, prepareSource } from '@staticforge/content';
 import {
   type Diagnostic,
   type Logger,
   type SforgeConfig,
+  type WorkerPool,
   countBySeverity,
+  createWorkerPool,
+  mapInPool,
+  poolSize,
   sortDiagnostics,
 } from '@staticforge/core';
 import {
@@ -30,12 +28,13 @@ import {
   loadTheme,
   themeAssetUrl,
 } from '@staticforge/render';
+import { type BuildCache, type CopyRecord, hashOf, memoized, stableJson } from './cache.js';
 import { type CodeInput, isCode, processCode } from './code-assets.js';
 import { loadData } from './data.js';
 import { absolutizeHtml, atomFeed, FEED_ITEMS, robotsTxt, rssFeed, sitemapXml } from './feeds.js';
-import { finishFragment, finishHtml, finishTree } from './html.js';
+import { finishFragment, finishTree } from './html.js';
 import { type ImageCache, optimizeImages } from './images.js';
-import { navEntries, navFor } from './nav.js';
+import { navEntries } from './nav.js';
 import {
   PAGE_EXTENSIONS,
   ProjectDirs,
@@ -43,10 +42,9 @@ import {
   resolveOutDir,
   resolveScratchDir,
 } from './project.js';
-import { type Route, createRefResolver, routeFor } from './routes.js';
+import { type Route, routeFor } from './routes.js';
 import {
   type SitePage,
-  breadcrumbsFor,
   collectionsOf,
   listRoute,
   slugify,
@@ -54,6 +52,18 @@ import {
   tagRoute,
   tagsOf,
 } from './site.js';
+import {
+  MIN_PAGES_FOR_WORKERS,
+  PARSE_TASK,
+  RENDER_TASK,
+  type ParsedPage,
+  type RenderContextShared,
+  type RenderItem,
+  assetUrlFor,
+  outputExists,
+  parsePages,
+  renderPages,
+} from './tasks.js';
 
 export interface BuildOptions {
   rootDir: string;
@@ -79,6 +89,18 @@ export interface BuildOptions {
   /** Value of `<meta name="generator">`. */
   generator?: string;
   logger?: Logger;
+  /**
+   * Worker threads to parse and render in. Without one, the build starts its own
+   * (sized by `build.workers`) when the site is large enough.
+   */
+  pool?: WorkerPool;
+  /** Results of earlier builds of the same project to reuse (`sforge dev`). */
+  cache?: BuildCache;
+  /**
+   * Write the search index later: called with a function that writes it, so a
+   * dev server can serve the pages first. The index is then not in the manifest.
+   */
+  deferSearch?: (writeIndex: () => Promise<void>) => void;
 }
 
 export interface BuiltPage {
@@ -120,8 +142,10 @@ export const CACHE_DIR = '.sforge/cache';
 
 interface PageJob {
   prepared: PreparedSource;
+  /** Hash of the source, when building with a cache. */
+  sourceKey?: string;
   route: Route;
-  parsed?: ParsedContent;
+  parsed?: ParsedPage;
 }
 
 interface CopyJob {
@@ -143,9 +167,22 @@ interface RenderJob {
 const ucfirst = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 export async function buildSite(options: BuildOptions): Promise<BuildResult> {
+  if (options.pool !== undefined) return build(options, options.pool);
+  // Workers start on first use, so a small site never pays for them.
+  const size = poolSize(options.config.build.workers);
+  const pool = size > 0 ? createWorkerPool(size) : undefined;
+  try {
+    return await build(options, pool);
+  } finally {
+    await pool?.close();
+  }
+}
+
+async function build(options: BuildOptions, pool: WorkerPool | undefined): Promise<BuildResult> {
   const started = performance.now();
-  const { rootDir, config } = options;
+  const { rootDir, config, cache } = options;
   const logger = options.logger;
+  cache?.begin();
   const baseUrl = options.baseUrl ?? config.site.baseUrl;
   const includeDrafts = options.drafts ?? config.build.drafts;
   const minify = options.minify ?? config.build.minify;
@@ -156,6 +193,13 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
       ? resolveScratchDir(options.scratchDir)
       : resolveOutDir(rootDir, options.outDir ?? config.build.outDir);
   const diagnostics: Diagnostic[] = [];
+  // Phase durations, logged at debug level (`--verbose`).
+  let phaseStart = started;
+  const phase = (name: string) => {
+    const now = performance.now();
+    logger?.debug(`build: ${name} ${Math.round(now - phaseStart)}ms`);
+    phaseStart = now;
+  };
 
   const theme = loadTheme(config.theme, rootDir);
 
@@ -189,17 +233,19 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
       continue;
     }
     const format = ext === '.md' || ext === '.markdown' ? 'markdown' : 'html';
-    const prepared = prepareSource(
-      readFileSync(join(contentDir, file), 'utf8'),
-      projectPath,
-      format,
-    );
+    const text = readFileSync(join(contentDir, file), 'utf8');
+    const sourceKey = cache && hashOf(projectPath, format, text);
+    let prepared = sourceKey === undefined ? undefined : cache?.prepared.get(sourceKey);
+    if (prepared === undefined) {
+      prepared = prepareSource(text, projectPath, format);
+      if (sourceKey !== undefined) cache?.prepared.set(sourceKey, prepared);
+    }
     if (prepared.meta.draft && !includeDrafts) {
       skippedDrafts.push(projectPath);
       continue;
     }
     const route = routeFor(file, prepared.meta.slug, urlOptions);
-    if (claim(route.output, projectPath)) pages.push({ prepared, route });
+    if (claim(route.output, projectPath)) pages.push({ prepared, route, sourceKey });
   }
 
   const codeInputs: CodeInput[] = [];
@@ -219,35 +265,22 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   copyTree(join(rootDir, ProjectDirs.static), '', ProjectDirs.static, false);
   const copyByOutput = new Map(copies.map((c) => [c.output, c]));
 
+  phase('discover');
+
   // 2. Stylesheets and scripts: bundle, minify, fingerprint.
   const code = await processCode(codeInputs, { minify, fingerprint });
+  phase('stylesheets and scripts');
   diagnostics.push(...code.diagnostics);
   for (const out of code.outputs) {
     if (!outputs.has(out.output)) claim(out.output, 'assets');
   }
-  const assetUrl = (url: string): string => {
-    const [, path = url, rest = ''] = /^([^?#]*)(.*)$/s.exec(url) ?? [];
-    return (code.urls.get(path) ?? path) + rest;
-  };
+  const assetUrl = assetUrlFor(code.urls);
   const renderer = createRenderer(theme, { rootDir, baseUrl, assetUrl });
 
   const hasNotFoundPage = outputs.has('404.html');
   if (!hasNotFoundPage && renderer.hasLayout('404')) claim('404.html', 'theme 404 layout');
 
-  // A root-relative URL path exists if it names an output file or directory index.
-  const fileExists = (urlPath: string): boolean => {
-    let path: string;
-    try {
-      path = decodeURI(urlPath.split(/[?#]/)[0] ?? '').replace(/^\//, '');
-    } catch {
-      return false;
-    }
-    return (
-      outputs.has(path) ||
-      outputs.has(posix.join(path, 'index.html')) ||
-      outputs.has(`${path}.html`)
-    );
-  };
+  const fileExists = (urlPath: string): boolean => outputExists(outputs, urlPath);
 
   // Global styles and scripts: theme first, then the project's.
   const styles = [...theme.manifest.styles.map(themeAssetUrl), ...config.styles].map(assetUrl);
@@ -263,22 +296,47 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
     }
   }
 
-  // 3. Parse every page; links resolve against the full set of page URLs.
+  // 3. Parse every page (in workers for large sites); links resolve against the
+  // full set of page URLs and outputs. Images are optimized here, page by page.
   const pageUrls = new Map(pages.map((p) => [p.prepared.path, p.route.url]));
+  const parseContext = {
+    language: config.site.language,
+    pageUrls,
+    outputs: new Set(outputs.keys()),
+    optimizeImages: config.images.optimize,
+  };
+  const parseContextKey = cache && hashOf(stableJson(parseContext));
+  const parseResults = await memoized(
+    pages,
+    cache?.parsed,
+    (page) => hashOf(parseContextKey ?? '', page.sourceKey ?? ''),
+    (missing) =>
+      mapInPool(
+        pool,
+        PARSE_TASK,
+        missing.map((p) => p.prepared),
+        parseContext,
+        parsePages,
+        {
+          minItems: MIN_PAGES_FOR_WORKERS,
+        },
+      ),
+    // Trees are changed later in the build, so only pages without one are kept.
+    (result) => result.parsed.tree === undefined,
+  );
+  const parsedPages = parseResults.results;
+  if (cache) cache.stats.parsed = parseResults.computed;
   const imageOutputs = new Map<string, string>();
   const imageCache: ImageCache = new Map();
-  for (const page of pages) {
+  for (const [i, page] of pages.entries()) {
+    const { parsed, references } = parsedPages[i] as (typeof parsedPages)[number];
+    page.parsed = parsed;
+    diagnostics.push(...references, ...parsed.diagnostics);
     const report = createReport(page.prepared.path, diagnostics);
-    page.parsed = await parseContent(page.prepared, {
-      language: config.site.language,
-      resolveRef: createRefResolver({ sourcePath: page.prepared.path, pageUrls, report }),
-      fileExists,
-    });
-    diagnostics.push(...page.parsed.diagnostics);
 
-    if (config.images.optimize && page.parsed.kind === 'fragment') {
+    if (config.images.optimize && parsed.kind === 'fragment' && parsed.tree !== undefined) {
       await optimizeImages(
-        page.parsed.tree,
+        parsed.tree,
         {
           ...config.images,
           cacheDir: join(rootDir, CACHE_DIR, 'images'),
@@ -308,6 +366,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
     }
     logger?.debug(`parsed ${page.prepared.path} → ${page.route.url}`);
   }
+  phase('parse');
 
   // 4. Site features: collections, tags, feeds.
   const sitePages: SitePage[] = pages.flatMap(({ prepared, route, parsed }) =>
@@ -421,7 +480,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
       route,
       layout,
       source: prepared.path,
-      content: toHtml(parsed.tree),
+      content: parsed.html ?? toHtml(parsed.tree),
       page: pageContext({
         title: parsed.title,
         description: prepared.meta.description,
@@ -555,6 +614,8 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
     });
   }
 
+  phase('site features');
+
   // 6. Render and write.
   const nav = navEntries(
     pages.flatMap(({ prepared, route, parsed }) =>
@@ -566,7 +627,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
     ...jobs.map((j): [string, string] => [j.route.url, j.page.title]),
   ]);
   const data = loadData(rootDir, diagnostics);
-  const now = new Date();
+  const now = cache?.time ?? new Date();
   const base: Omit<RenderContext, 'page' | 'content' | 'nav' | 'breadcrumbs'> = {
     site: {
       title: config.site.title,
@@ -612,28 +673,57 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   const indexed: SearchPage[] = [];
   const bodies = new Map<string, string>();
 
-  for (const job of jobs) {
-    let html: string;
-    try {
-      html = renderer.render(job.layout, {
-        ...base,
-        page: job.page,
-        content: job.content,
-        nav: navFor(nav, job.route.url),
-        breadcrumbs: breadcrumbsFor(job.route.url, titles),
-        ...(job.pagination && { pagination: job.pagination }),
-        ...(job.tag && { tag: job.tag }),
-      });
-    } catch (error) {
+  // Render with the layouts and finish (in workers for large sites), then write in job order.
+  const shared: RenderContextShared = {
+    buildId: randomUUID(),
+    theme: config.theme,
+    rootDir,
+    baseUrl,
+    assetUrls: code.urls,
+    minify,
+    base,
+    nav,
+    titles,
+  };
+  const renderItems = jobs.map((job): RenderItem => ({
+    layout: job.layout,
+    url: job.route.url,
+    page: job.page,
+    content: job.content,
+    ...(job.pagination && { pagination: job.pagination }),
+    ...(job.tag && { tag: job.tag }),
+  }));
+  // A page renders the same when its item, the shared context and the templates are the same.
+  const renderContextKey =
+    cache && hashOf(stableJson({ ...shared, buildId: '' }), templatesKey(theme.dir, rootDir));
+  const renderedPages = await memoized(
+    renderItems,
+    cache?.rendered,
+    (item) => hashOf(renderContextKey ?? '', stableJson(item)),
+    async (missing) =>
+      (
+        await mapInPool(pool, RENDER_TASK, missing, shared, renderPages, {
+          minItems: MIN_PAGES_FOR_WORKERS,
+        })
+      ).map((result) => ('html' in result ? result.html : result)),
+    (result) => typeof result === 'string',
+  );
+  const rendered = renderedPages.results.map((result) =>
+    typeof result === 'string' ? { html: result } : result,
+  );
+  if (cache) cache.stats.rendered = renderedPages.computed;
+  for (const [i, job] of jobs.entries()) {
+    const result = rendered[i] as (typeof rendered)[number];
+    if ('error' in result) {
       diagnostics.push({
         ruleId: 'render-failed',
         severity: 'error',
-        message: error instanceof Error ? error.message : String(error),
+        message: result.error,
         ...(job.source !== undefined && { file: job.source }),
       });
       continue;
     }
-    const finished = finishHtml(html, finish);
+    const finished = result.html;
     write(job.route.output, finished);
     if (job.source !== undefined) bodies.set(job.source, job.content);
     indexed.push({ url: job.route.url, html: finished });
@@ -646,7 +736,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   }
 
   for (const { prepared, route, parsed } of documents) {
-    if (parsed === undefined) continue;
+    if (parsed?.tree === undefined) continue;
     injectHead(parsed.tree, styles, scripts);
     finishTree(parsed.tree, finish);
     const html = toHtml(parsed.tree);
@@ -654,6 +744,8 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
     indexed.push({ url: route.url, html });
     built.push({ source: prepared.path, url: route.url, output: route.output, layout: 'document' });
   }
+
+  phase('render');
 
   // Feeds, sitemap and robots.txt.
   for (const feed of feedJobs) {
@@ -701,12 +793,56 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
     write('robots.txt', robotsTxt(new URL('/sitemap.xml', baseUrl).href));
   }
 
-  for (const copy of copies) write(copy.output, readFileSync(copy.source));
+  // Copies the previous build already has (same source, size and time) are hard-linked.
+  const copyRecords = new Map<string, CopyRecord>();
+  const copyFile = (output: string, source: string, immutable: boolean) => {
+    if (cache === undefined) {
+      write(output, readFileSync(source), immutable);
+      return;
+    }
+    const { size, mtimeMs } = statSync(source);
+    const previous = cache.previous;
+    const before = previous?.copies.get(output);
+    if (
+      previous !== undefined &&
+      before?.source === source &&
+      before.size === size &&
+      before.mtimeMs === mtimeMs
+    ) {
+      const path = join(outDir, output);
+      mkdirSync(dirname(path), { recursive: true });
+      try {
+        linkSync(join(previous.outDir, output), path);
+        manifest[output] = {
+          sha256: before.sha256,
+          size,
+          cache: immutable ? 'immutable' : 'revalidate',
+        };
+        copyRecords.set(output, before);
+        cache.stats.linked++;
+        return;
+      } catch {
+        // Gone or on another device: copy it.
+      }
+    }
+    write(output, readFileSync(source), immutable);
+    copyRecords.set(output, {
+      source,
+      size,
+      mtimeMs,
+      sha256: (manifest[output] as ManifestEntry).sha256,
+    });
+  };
+  for (const copy of copies) copyFile(copy.output, copy.source, false);
   for (const out of code.outputs) write(out.output, out.contents, out.immutable);
-  for (const [output, file] of imageOutputs) write(output, readFileSync(file), true);
+  for (const [output, file] of imageOutputs) copyFile(output, file, true);
+
+  phase('feeds, sitemap and copies');
 
   // Search index, over the finished pages.
-  if (config.search.enabled) {
+  if (config.search.enabled && options.deferSearch !== undefined) {
+    options.deferSearch(async () => void (await writeSearchIndex(indexed, outDir)));
+  } else if (config.search.enabled) {
     try {
       for (const file of await writeSearchIndex(indexed, outDir)) {
         record(file, readFileSync(join(outDir, file)));
@@ -720,12 +856,16 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
     }
   }
 
+  if (config.search.enabled && options.deferSearch === undefined) phase('search index');
+
   const sorted = sortDiagnostics(diagnostics);
   const summary = countBySeverity(sorted);
   write(
     MANIFEST_PATH,
     `${JSON.stringify({ version: 1, generator: base.build.generator, builtAt: base.build.time, baseUrl, files: manifest }, null, 2)}\n`,
   );
+
+  cache?.commit({ outDir, copies: copyRecords });
 
   return {
     ok: summary.error === 0,
@@ -737,6 +877,19 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
     summary,
     durationMs: Math.round(performance.now() - started),
   };
+}
+
+/** Hash of the theme's and the project's template files. */
+function templatesKey(themeDir: string, rootDir: string): string {
+  const parts: string[] = [];
+  for (const dir of [themeDir, join(rootDir, 'templates')]) {
+    for (const file of listFiles(dir)) {
+      if (file.endsWith('.njk') || file === 'theme.json') {
+        parts.push(dir, file, readFileSync(join(dir, file), 'utf8'));
+      }
+    }
+  }
+  return hashOf(...parts);
 }
 
 /** Add theme and site styles/scripts to a pass-through document's <head>. */

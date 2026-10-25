@@ -233,10 +233,15 @@ hr {
   margin-block: 2rem;
 }
 
+/* Content tables are wrapped in a focusable .table-scroll, so wide tables scroll
+   sideways (also from the keyboard) and keep their table semantics. */
+.table-scroll {
+  overflow-x: auto;
+  margin-block: 1rem;
+}
+
 table {
   border-collapse: collapse;
-  display: block;
-  overflow-x: auto;
 }
 
 th,

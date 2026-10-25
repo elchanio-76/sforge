@@ -1,24 +1,42 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { extname, join } from 'node:path';
+import { join } from 'node:path';
 import { createTwoFilesPatch } from 'diff';
 import { fromHtml } from 'hast-util-from-html';
 import type { Root } from 'hast';
-import { type BuildResult, buildSite } from '@staticforge/build';
-import { prepareSource } from '@staticforge/content';
+import {
+  type BuildResult,
+  MANIFEST_PATH,
+  buildSite,
+  hashOf,
+  memoized,
+  stableJson,
+} from '@staticforge/build';
+import type { CheckCache } from './cache.js';
 import {
   type Diagnostic,
   ErrorCode,
   type Logger,
   type SforgeConfig,
   SforgeError,
+  type WorkerPool,
   countBySeverity,
+  createWorkerPool,
+  mapInPool,
+  poolSize,
   sortDiagnostics,
 } from '@staticforge/core';
 import { INSTALL_BROWSER_COMMAND, checkRendered } from './headless.js';
-import { validateHtml } from './html-validate.js';
 import { checkOutput, idsOf } from './output-rules.js';
-import { checkSource, pageUrlMap } from './source-rules.js';
+import { pageUrlMap } from './source-rules.js';
+import {
+  MIN_PAGES_FOR_WORKERS,
+  SOURCE_TASK,
+  type SourceItem,
+  VALIDATE_TASK,
+  checkSources,
+  validatePages,
+} from './tasks.js';
 import { type TextEdit, applyEdits } from './text.js';
 import type { CheckPage, Finding } from './types.js';
 
@@ -39,6 +57,10 @@ export interface CheckBuildOptions {
   /** Only check built pages whose URL or source path matches one of these globs. */
   pages?: string[];
   logger?: Logger;
+  /** Worker threads for the per-page rules; without one, the check starts its own when worthwhile. */
+  pool?: WorkerPool;
+  /** Results of earlier checks of the same project to reuse (`sforge dev`). */
+  cache?: CheckCache;
 }
 
 export interface CheckBuildResult {
@@ -98,11 +120,27 @@ const ONE_PER_PAGE = new Set([
   'video-captions',
 ]);
 
+/**
+ * Hash of what output rules see of the whole site: its files and every page's
+ * ids. Undefined (no caching) when the build has no manifest to list its files.
+ */
+function siteKeyOf(
+  outDir: string,
+  ids: Map<string, Set<string>>,
+  trailingSlash: string,
+): string | undefined {
+  let files: unknown;
+  try {
+    files = (JSON.parse(readFileSync(join(outDir, MANIFEST_PATH), 'utf8')) as { files: unknown })
+      .files;
+  } catch {
+    return undefined;
+  }
+  return hashOf(stableJson(Object.keys(files as object).sort()), stableJson(ids), trailingSlash);
+}
+
 /** Most precise first: source positions beat output selectors beat rendered ones. */
 const PRECISION: Record<Finding['layer'], number> = { source: 0, build: 1, output: 2, rendered: 3 };
-
-const formatOf = (path: string): 'markdown' | 'html' =>
-  ['.md', '.markdown'].includes(extname(path).toLowerCase()) ? 'markdown' : 'html';
 
 /** `/blog/**` matches every page under /blog/; `content/docs/*.md` a set of sources. */
 export function globToRegExp(glob: string): RegExp {
@@ -169,7 +207,23 @@ export function finalizeDiagnostics(findings: Finding[], ignore: string[]): Diag
 
 /** Check a finished build: its own diagnostics plus the source, output and rendered rules. */
 export async function checkBuild(options: CheckBuildOptions): Promise<CheckBuildResult> {
-  const { rootDir, config, build, logger } = options;
+  if (options.pool !== undefined) return check(options, options.pool);
+  // Workers start on first use, so a small site never pays for them.
+  const size = poolSize(options.config.build.workers);
+  const pool = size > 0 ? createWorkerPool(size) : undefined;
+  try {
+    return await check(options, pool);
+  } finally {
+    await pool?.close();
+  }
+}
+
+async function check(
+  options: CheckBuildOptions,
+  pool: WorkerPool | undefined,
+): Promise<CheckBuildResult> {
+  const { rootDir, config, build, logger, cache } = options;
+  cache?.begin();
   const findings: Finding[] = build.diagnostics.map((diagnostic) => ({
     layer: 'build',
     diagnostic,
@@ -183,30 +237,58 @@ export async function checkBuild(options: CheckBuildOptions): Promise<CheckBuild
   }));
   const pageUrls = pageUrlMap(pages);
 
-  // Source rules.
-  for (const page of pages) {
-    if (page.source === undefined) continue;
-    const text = readFileSync(join(rootDir, page.source), 'utf8');
-    findings.push(
-      ...checkSource({
-        page: { ...page, source: page.source },
-        text,
-        prepared: prepareSource(text, page.source, formatOf(page.source)),
-        language: config.site.language,
-        pageUrls,
-        trailingSlash: config.build.trailingSlash,
+  // Source rules (in workers for large sites).
+  const sourceItems = pages.flatMap((page): SourceItem[] =>
+    page.source === undefined
+      ? []
+      : [
+          {
+            page: { ...page, source: page.source },
+            text: readFileSync(join(rootDir, page.source), 'utf8'),
+          },
+        ],
+  );
+  const sourceContext = {
+    language: config.site.language,
+    pageUrls,
+    trailingSlash: config.build.trailingSlash,
+  };
+  const sourceKey = cache && hashOf(stableJson(sourceContext));
+  const sourceFindings = await memoized(
+    sourceItems,
+    cache?.sources,
+    (item) => hashOf(sourceKey ?? '', stableJson(item.page), item.text),
+    (missing) =>
+      mapInPool(pool, SOURCE_TASK, missing, sourceContext, checkSources, {
+        minItems: MIN_PAGES_FOR_WORKERS,
       }),
-    );
-  }
+    () => true,
+  );
+  if (cache) cache.stats.sources = sourceFindings.computed;
+  findings.push(...sourceFindings.results.flat());
 
-  // Output rules. Every page is parsed so links can check fragment ids anywhere.
-  const trees = new Map<string, { html: string; tree: Root }>();
+  // Output rules. Links can point at fragment ids on any page, so every page's ids are needed.
+  const htmls = new Map<string, string>();
+  const trees = new Map<string, Root>();
+  const treeOf = (output: string): Root => {
+    let tree = trees.get(output);
+    if (tree === undefined) {
+      tree = fromHtml(htmls.get(output) ?? '');
+      trees.set(output, tree);
+    }
+    return tree;
+  };
   const ids = new Map<string, Set<string>>();
   for (const page of pages) {
     const html = readFileSync(join(build.outDir, page.output), 'utf8');
-    const tree = fromHtml(html);
-    trees.set(page.output, { html, tree });
-    ids.set(page.output, idsOf(tree));
+    htmls.set(page.output, html);
+    const key = cache && hashOf(html);
+    let pageIds = key === undefined ? undefined : cache?.ids.get(key);
+    if (pageIds === undefined) {
+      pageIds = idsOf(treeOf(page.output));
+      if (key !== undefined) cache?.ids.set(key, pageIds);
+    }
+    ids.set(page.output, pageIds);
   }
   const filters = (options.pages ?? []).map(globToRegExp);
   const selected = pages.filter(
@@ -214,24 +296,56 @@ export async function checkBuild(options: CheckBuildOptions): Promise<CheckBuild
       filters.length === 0 ||
       filters.some((re) => re.test(p.url) || (p.source !== undefined && re.test(p.source))),
   );
+  // The search index may still be being written (`sforge dev` defers it).
   const exists = (path: string): boolean => {
+    if (config.search.enabled && path.startsWith('pagefind/')) return true;
     const full = join(build.outDir, path);
     return existsSync(full) && statSync(full).isFile();
   };
-  for (const page of selected) {
-    const parsed = trees.get(page.output);
-    if (parsed === undefined) continue;
-    findings.push(
-      ...checkOutput({
-        page,
-        tree: parsed.tree,
-        exists,
-        idsOf: (output) => ids.get(output),
-        trailingSlash: config.build.trailingSlash,
-      }),
-      ...(await validateHtml(page, parsed.html)),
-    );
+  const pageKey = (page: CheckPage) => stableJson(page) + hashOf(htmls.get(page.output) ?? '');
+
+  // html-validate (in workers for large sites).
+  const validated = await memoized(
+    selected,
+    cache?.validated,
+    (page) => hashOf(pageKey(page)),
+    (missing) =>
+      mapInPool(
+        pool,
+        VALIDATE_TASK,
+        missing.map((page) => ({ page, html: htmls.get(page.output) ?? '' })),
+        undefined,
+        validatePages,
+        { minItems: MIN_PAGES_FOR_WORKERS },
+      ),
+    () => true,
+  );
+  if (cache) cache.stats.validated = validated.computed;
+
+  // staticforge's output rules, here: they need every page's ids. Their results
+  // depend on the files and ids of the whole site.
+  const siteKey = cache && siteKeyOf(build.outDir, ids, config.build.trailingSlash);
+  const output = await memoized(
+    selected,
+    siteKey === undefined ? undefined : cache?.output,
+    (page) => hashOf(siteKey ?? '', pageKey(page)),
+    async (missing) =>
+      missing.map((page) =>
+        checkOutput({
+          page,
+          tree: treeOf(page.output),
+          exists,
+          idsOf: (target) => ids.get(target),
+          trailingSlash: config.build.trailingSlash,
+        }),
+      ),
+    () => true,
+  );
+  if (cache) cache.stats.output = output.computed;
+  for (const [i] of selected.entries()) {
+    findings.push(...(output.results[i] ?? []), ...(validated.results[i] ?? []));
   }
+  cache?.commit();
 
   // Rendered rules.
   let rendered: CheckBuildResult['rendered'] = 'off';
@@ -287,6 +401,7 @@ async function buildAndCheck(options: CheckOptions, headless: boolean): Promise<
       rootDir: options.rootDir,
       config: options.config,
       scratchDir: scratch,
+      ...(options.pool && { pool: options.pool }),
       ...(options.drafts !== undefined && { drafts: options.drafts }),
       ...(options.generator !== undefined && { generator: options.generator }),
       ...(options.logger && { logger: options.logger }),
@@ -333,6 +448,18 @@ function collectFixes(
 
 /** Build the site into a temporary directory and check it, optionally fixing what it safely can. */
 export async function checkSite(options: CheckOptions): Promise<CheckResult> {
+  if (options.pool !== undefined) return checkSiteWith(options);
+  // One pool for every build and check of the run (a fix runs both twice).
+  const size = poolSize(options.config.build.workers);
+  const pool = size > 0 ? createWorkerPool(size) : undefined;
+  try {
+    return await checkSiteWith({ ...options, ...(pool && { pool }) });
+  } finally {
+    await pool?.close();
+  }
+}
+
+async function checkSiteWith(options: CheckOptions): Promise<CheckResult> {
   const started = performance.now();
   const { config } = options;
   const headless = options.headless ?? config.check.headless;

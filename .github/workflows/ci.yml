@@ -43,6 +43,10 @@ jobs:
           pnpm sforge build --cwd examples/basic-site
           pnpm sforge check --cwd "$RUNNER_TEMP/site"
           pnpm sforge check --cwd examples/basic-site --format sarif --output "$RUNNER_TEMP/check.sarif"
+      - name: Build and check the docs site (built with sforge)
+        run: |
+          pnpm sforge build --cwd docs
+          pnpm sforge check --cwd docs --headless
       - name: Smoke test the MCP server over stdio
         run: |
           (printf '%s\n' \
@@ -50,6 +54,22 @@ jobs:
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'; sleep 2) |
             pnpm --silent sforge mcp --cwd examples/basic-site | grep -q '"sforge_build"'
+
+  pack:
+    name: Packages (installed from tarballs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test:pack
+      - name: Benchmark a small synthetic site (catches crashes, not regressions)
+        run: pnpm bench --pages 200
 
   iac:
     name: HCL modules

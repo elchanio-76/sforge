@@ -354,3 +354,24 @@ cd packages/providers/aws/terraform/modules/site      # or packages/providers/az
 tofu init -backend=false && tofu test     # mocked cloud: no account needed
 pnpm test:iac                             # validate the generated workspaces with tofu/terraform
 ```
+
+## Live tests
+
+`pnpm test:live` runs the whole cycle against a real account: it copies the example site to a
+temporary git repository, provisions a target with a remote state backend, checks that a second
+plan has no changes, deploys twice, checks the served site over HTTP (status codes, the
+trailing-slash redirect, the 404 page, security and cache headers, `.sforge/` not served, and on
+AWS that the bucket refuses direct requests), checks for drift, rolls back, and on Azure deploys
+and removes a preview environment. It always destroys the target at the end (the state backend
+is kept and reused); if that fails, it prints the command to clean up.
+
+It signs in the way the CLI does (your AWS profile or SSO session, or `az login`) and asks you to
+name the account it will touch:
+
+```sh
+SFORGE_LIVE=aws SFORGE_LIVE_CONFIRM=<account id> pnpm test:live          # eu-north-1, or SFORGE_LIVE_REGION
+SFORGE_LIVE=azure SFORGE_LIVE_CONFIRM=<subscription id> pnpm test:live   # eastus2, state in northeurope
+```
+
+Provisioning CloudFront takes several minutes, so an AWS run takes about 10–20 minutes. Run it
+in a sandbox account or subscription.

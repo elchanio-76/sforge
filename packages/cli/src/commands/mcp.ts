@@ -1,8 +1,6 @@
 import type { Command } from 'commander';
-import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import type { Runtime } from '../command.js';
 import { type GlobalOptions, createContext } from '../context.js';
-import { createSforgeMcp } from '../mcp/server.js';
 
 /** Global options of `sforge mcp` that every tool call inherits. */
 function inheritedArgs(opts: GlobalOptions): string[] {
@@ -24,8 +22,11 @@ export function registerMcpCommand(program: Command, runtime: Runtime): void {
       const ctx = createContext(command, runtime.io);
       // stdout carries the protocol: anything a library prints goes to stderr instead.
       console.log = console.info = console.debug = console.error;
-      // Imported here: main.ts registers this command, so a static import would be a cycle.
+      // Imported here: main.ts registers this command, so a static import would be a
+      // cycle, and the MCP SDK would slow down every other command.
       const { run } = await import('../main.js');
+      const { createSforgeMcp } = await import('../mcp/server.js');
+      const { serveStdio } = await import('@modelcontextprotocol/server/stdio');
       const mcp = createSforgeMcp({
         run,
         cwd: ctx.cwd,

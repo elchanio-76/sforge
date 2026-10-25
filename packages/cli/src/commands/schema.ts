@@ -1,5 +1,5 @@
 import { Argument, type Command } from 'commander';
-import { checkReportJsonSchema } from '@staticforge/checker';
+import { checkReportJsonSchema } from '@staticforge/checker/report-schema';
 import { configJsonSchema } from '@staticforge/core';
 import { type Runtime, action } from '../command.js';
 import { outputJsonSchema } from '../output.js';

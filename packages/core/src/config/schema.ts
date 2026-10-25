@@ -187,6 +187,12 @@ export const configSchema = z
         trailingSlash: z.enum(['always', 'never']).default('always'),
         minify: z.boolean().default(true),
         drafts: z.boolean().default(false),
+        workers: z
+          .union([z.int().min(0).max(64), z.literal('auto')])
+          .default('auto')
+          .describe(
+            'Worker threads for parsing, rendering and checking: "auto" (all cores but one, at most 8) or a number; 0 uses the main thread only. SFORGE_WORKERS overrides it.',
+          ),
       })
       .prefault({}),
     images: z

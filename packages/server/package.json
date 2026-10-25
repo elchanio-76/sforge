@@ -1,8 +1,21 @@
 {
   "name": "@staticforge/server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Static file server with staticforge's production URL semantics",
+  "keywords": [
+    "staticforge"
+  ],
+  "homepage": "https://github.com/elchanio-76/sforge#readme",
+  "bugs": {
+    "url": "https://github.com/elchanio-76/sforge/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elchanio-76/sforge.git",
+    "directory": "packages/server"
+  },
   "license": "MIT",
+  "author": "Eleftherios Chaniotakis",
   "type": "module",
   "exports": {
     ".": {
@@ -16,6 +29,9 @@
   ],
   "engines": {
     "node": "^22.22.0 || >=24.8.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@staticforge/core": "workspace:*",

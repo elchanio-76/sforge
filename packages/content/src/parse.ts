@@ -23,6 +23,7 @@ import {
 import { transformNewTabLinks } from './transforms/links.js';
 import { transformMedia } from './transforms/media.js';
 import { type ResolveRef, resolveRefs } from './transforms/refs.js';
+import { makeScrollablesFocusable } from './transforms/scrollables.js';
 import { labelTaskListItems } from './transforms/task-lists.js';
 import { type Report, createReport } from './transforms/report.js';
 
@@ -68,7 +69,8 @@ const enhanceFragment = unified()
     test: (node: Element) => !node.children.some((c) => c.type === 'element' && c.tagName === 'a'),
   })
   .use(rehypeShiki, {
-    themes: { light: 'github-light', dark: 'github-dark' },
+    // github-dark's comments fail AA contrast (3:1); github-dark-default's pass.
+    themes: { light: 'github-light', dark: 'github-dark-default' },
     defaultColor: false,
     // Load grammars on first use. Without `langs: []` every bundled grammar is
     // loaded up front (~2s), even with `lazy`.
@@ -193,6 +195,7 @@ export async function parseContent(
   transformNewTabLinks(tree);
   labelTaskListItems(tree);
   tree = await enhanceFragment.run(tree, file);
+  makeScrollablesFocusable(tree);
 
   return {
     kind,

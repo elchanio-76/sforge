@@ -91,7 +91,7 @@ export interface FeedLink {
   url: string;
 }
 
-/** Everything a layout can use. Documented in docs/themes.md. */
+/** Everything a layout can use. Documented in docs/content/themes.md. */
 export interface RenderContext {
   site: SiteContext;
   page: PageContext;
@@ -147,8 +147,10 @@ export function createRenderer(
 ): Renderer {
   const overridesDir = join(options.rootDir, 'templates');
   const searchPaths = [overridesDir, theme.dir].filter((dir) => existsSync(dir));
+  // A renderer lives for one build, so templates are compiled once per build
+  // and edits still show up in the next one (e.g. under `sforge dev`).
   const env = new nunjucks.Environment(
-    new nunjucks.FileSystemLoader(searchPaths, { noCache: true }),
+    new nunjucks.FileSystemLoader(searchPaths, { noCache: false }),
     {
       autoescape: true,
       trimBlocks: true,

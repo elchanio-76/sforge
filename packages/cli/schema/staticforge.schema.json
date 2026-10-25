@@ -69,6 +69,21 @@
         "drafts": {
           "default": false,
           "type": "boolean"
+        },
+        "workers": {
+          "default": "auto",
+          "description": "Worker threads for parsing, rendering and checking: \"auto\" (all cores but one, at most 8) or a number; 0 uses the main thread only. SFORGE_WORKERS overrides it.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 64
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ]
         }
       },
       "additionalProperties": false

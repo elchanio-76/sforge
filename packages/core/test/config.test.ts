@@ -33,6 +33,7 @@ describe('validateConfig', () => {
       trailingSlash: 'always',
       minify: true,
       drafts: false,
+      workers: 'auto',
     });
     expect(config.check.wcag).toBe('2.2-AA');
     expect(config.iac.engine).toBe('tofu');

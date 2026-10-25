@@ -1,5 +1,4 @@
 import { Option, type Command } from 'commander';
-import { initProject } from '@staticforge/build';
 import { resolve } from 'node:path';
 import { type Runtime, action } from '../command.js';
 import { displayPath } from '../paths.js';
@@ -27,6 +26,7 @@ export function registerInitCommand(program: Command, runtime: Runtime): void {
     .option('--force', 'overwrite existing starter files')
     .action(
       action(runtime, async (ctx, { args, options }) => {
+        const { initProject } = await import('@staticforge/build');
         const dir = resolve(ctx.cwd, String(args[0]));
         const result = initProject({
           dir,

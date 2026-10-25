@@ -151,9 +151,20 @@ describe('parseContent: markdown', () => {
 
   it('highlights code with dual light/dark themes and keeps blocks focusable', async () => {
     const page = await md('```js\nconst a = 1;\n```\n');
-    expect(page.html).toContain('class="shiki shiki-themes github-light github-dark"');
+    expect(page.html).toContain('class="shiki shiki-themes github-light github-dark-default"');
     expect(page.html).toContain('--shiki-dark:');
-    expect(page.html).toContain('tabindex="0"');
+    expect(page.html.match(/tabindex="0"/g)).toHaveLength(1);
+  });
+
+  it('makes code blocks and tables keyboard-scrollable', async () => {
+    const page = await md(
+      '```\nplain\n```\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<table><caption>Prices</caption><tr><td>1</td></tr></table>\n',
+    );
+    expect(page.html).toContain('<pre tabindex="0"><code>plain');
+    expect(page.html).toMatch(/<div class="table-scroll" tabindex="0"><table>\s*<thead>/);
+    expect(page.html).toContain(
+      '<div class="table-scroll" tabindex="0" role="region" aria-label="Prices"><table><caption>Prices</caption>',
+    );
   });
 
   it('falls back to plain text for unknown languages', async () => {

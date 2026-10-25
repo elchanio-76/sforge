@@ -84,7 +84,7 @@ A successful call returns:
 A check that finds problems is a successful call: `data.ok` is false and `data.diagnostics`
 lists them. Each diagnostic has `ruleId`, `severity`, `message`, and where known `file`, `line`,
 `column`, `url`, `selector`, `wcag`, `fixable`, `hint` and `helpUrl`
-([docs/checker.md](checker.md)).
+([Checking a site](checker.md)).
 
 A failed call has `isError: true` and its text is `<code>: <message>`, a `hint:` line when there
 is one, then the error as JSON (`{ code, message, details?, hint? }`). Match on the code, e.g.

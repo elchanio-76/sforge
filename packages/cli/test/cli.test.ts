@@ -7,6 +7,7 @@ import { checkReportJsonSchema } from '@staticforge/checker';
 import { configJsonSchema } from '@staticforge/core';
 import { run } from '../src/main.js';
 import { outputJsonSchema } from '../src/output.js';
+import { VERSION } from '../src/version.js';
 import type { Io } from '../src/io.js';
 import { expectValidEnvelope } from './schema-validation.js';
 
@@ -193,7 +194,7 @@ describe('sforge CLI', () => {
     });
     expect(envelope.data.pages.map((p: { url: string }) => p.url)).toContain('/blog/first/');
     expect(readFileSync(join(dir, 'dist/blog/first/index.html'), 'utf8')).toContain(
-      '<meta name="generator" content="staticforge 0.0.0">',
+      `<meta name="generator" content="staticforge ${VERSION}">`,
     );
   });
 
@@ -267,6 +268,19 @@ describe('sforge CLI', () => {
     const result = await sforge(['preview', '--port', 'abc']);
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain('must be an integer from 0 to 65535');
+  });
+
+  it('builds with any number of workers, and rejects invalid counts', async () => {
+    const dir = projectWith(validConfig);
+    mkdirSync(join(dir, 'content'));
+    writeFileSync(join(dir, 'content', 'index.md'), '---\ntitle: Home\n---\n\nHi.\n');
+    for (const workers of ['0', '2', 'auto']) {
+      const result = await sforge(['build', '--workers', workers, '--json'], { cwd: dir });
+      expect(result.exitCode, result.stderr).toBe(0);
+    }
+    const invalid = await sforge(['check', '--workers', '-1']);
+    expect(invalid.exitCode).toBe(2);
+    expect(invalid.stderr).toContain('must be "auto" or an integer from 0 to 64');
   });
 
   it('checks a site, with reports for people, CI and agents, and fixes it', async () => {

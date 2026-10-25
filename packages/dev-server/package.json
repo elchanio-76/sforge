@@ -1,8 +1,21 @@
 {
   "name": "@staticforge/dev-server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Local preview and live-reloading development server for staticforge",
+  "keywords": [
+    "staticforge"
+  ],
+  "homepage": "https://github.com/elchanio-76/sforge#readme",
+  "bugs": {
+    "url": "https://github.com/elchanio-76/sforge/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elchanio-76/sforge.git",
+    "directory": "packages/dev-server"
+  },
   "license": "MIT",
+  "author": "Eleftherios Chaniotakis",
   "type": "module",
   "exports": {
     ".": {
@@ -18,11 +31,17 @@
   "engines": {
     "node": "^22.22.0 || >=24.8.0"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@staticforge/build": "workspace:*",
     "@staticforge/checker": "workspace:*",
     "@staticforge/core": "workspace:*",
     "@staticforge/server": "workspace:*",
     "chokidar": "^5.0.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1"
   }
 }

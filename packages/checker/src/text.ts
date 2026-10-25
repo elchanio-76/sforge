@@ -15,8 +15,10 @@ export interface Point {
 /** Converts between offsets and line/column positions of one text. */
 export class LineIndex {
   private readonly starts: number[] = [0];
+  readonly text: string;
 
-  constructor(readonly text: string) {
+  constructor(text: string) {
+    this.text = text;
     for (let i = 0; i < text.length; i++) {
       if (text.charCodeAt(i) === 10) this.starts.push(i + 1);
     }
