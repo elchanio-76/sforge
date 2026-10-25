@@ -17,7 +17,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "sforge": "node packages/cli/dist/bin.js",
-    "schema:generate": "pnpm build && node packages/cli/dist/bin.js schema config > packages/cli/schema/staticforge.schema.json"
+    "schema:generate": "pnpm build && for name in config output diagnostics; do node packages/cli/dist/bin.js schema $name > packages/cli/schema/$name.schema.json; done && mv packages/cli/schema/config.schema.json packages/cli/schema/staticforge.schema.json"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

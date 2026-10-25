@@ -6,9 +6,10 @@
   collections, tags, RSS/Atom feeds, a sitemap, responsive images and client-side search,
 - checks the output against WCAG 2.2 AA, with optional autofix,
 - serves a local preview,
-- provisions and deploys to AWS (private S3 + CloudFront) and Azure Static Web Apps.
+- provisions and deploys to AWS (private S3 + CloudFront) and Azure Static Web Apps,
+- offers all of this to AI agents as an MCP server, and to scripts as JSON with schemas.
 
-> **Status:** early development (milestone M5: provisioning and deploying to AWS). See [PLAN.md](PLAN.md) for the design and roadmap.
+> **Status:** early development (milestone M7: MCP server and JSON schemas). See [PLAN.md](PLAN.md) for the design and roadmap.
 
 ## Development
 
@@ -22,8 +23,8 @@ pnpm lint && pnpm format:check
 pnpm sforge --help  # run the built CLI
 ```
 
-After changing the config schema, run `pnpm schema:generate` to refresh
-`packages/cli/schema/staticforge.schema.json` (a test fails if it is stale).
+After changing the config schema or the `--json` data of a command, run `pnpm schema:generate`
+to refresh the schemas in `packages/cli/schema/` (a test fails if they are stale).
 
 ## Quick start
 
@@ -38,12 +39,14 @@ sforge build            # → dist/
 sforge preview          # serve dist/ exactly as production will
 sforge provision staging --bootstrap-state   # AWS: private S3 + CloudFront (OpenTofu/Terraform)
 sforge deploy staging   # build, check, upload a new version and switch to it
+claude mcp add sforge -- npx sforge mcp      # let an AI agent build, check and fix the site
 ```
 
 See [docs/content.md](docs/content.md) for project layout, URLs, front-matter and links,
 [docs/themes.md](docs/themes.md) for the theme contract and template context, and
-[docs/checker.md](docs/checker.md) for the checks, fixes and reports, and
-[docs/deploy.md](docs/deploy.md) for provisioning, deploys, versions, previews and CI roles.
+[docs/checker.md](docs/checker.md) for the checks, fixes and reports,
+[docs/deploy.md](docs/deploy.md) for provisioning, deploys, versions, previews and CI roles, and
+[docs/mcp.md](docs/mcp.md) for the MCP server, `--json` output and its schemas.
 [examples/basic-site](examples/basic-site) shows every content type.
 
 ## Packages
@@ -62,12 +65,14 @@ See [docs/content.md](docs/content.md) for project layout, URLs, front-matter an
 | [`@staticforge/iac`](packages/providers/iac)                   | OpenTofu/Terraform: engine download, workspaces, runner, state        |
 | [`@staticforge/provider-api`](packages/providers/provider-api) | Provider interface, manifests, cache and security headers             |
 | [`@staticforge/aws`](packages/providers/aws)                   | AWS: HCL modules, S3 + CloudFront deployer, versions, previews        |
-| [`staticforge`](packages/cli)                                  | The `sforge` command-line interface                                   |
+| [`@staticforge/azure`](packages/providers/azure)               | Azure: HCL modules, Static Web Apps deployer, previews, rollback      |
+| [`staticforge`](packages/cli)                                  | The `sforge` command-line interface and MCP server                    |
 
 ## CLI contract (for scripts and agents)
 
 - `--json` writes exactly one JSON document to stdout; all logs go to stderr.
-  The envelope is `{ schemaVersion, command, ok, data?, error? }`; see `sforge schema output`.
+  The envelope is `{ schemaVersion, command, ok, data?, error? }`; `sforge schema output` describes
+  it, including every command's `data` (also shipped as `schema/output.schema.json`).
 - Errors carry a stable `error.code` (`SF_CONFIG_INVALID`, `SF_CONFIG_NOT_FOUND`, …). Match on the code, not the message.
 - Exit codes: `0` success, `1` the command ran and found failures, `2` usage or config error, `3` internal error.
 - `--non-interactive` (implied when `CI` is set or stdin is not a TTY) never prompts:
@@ -95,8 +100,9 @@ sforge config validate     # validate staticforge.config.{ts,js,json,yaml}
 sforge config show         # print the resolved config with defaults
 sforge schema config       # JSON Schema of the config file
 sforge schema diagnostics  # JSON Schema of the check report and its diagnostics
-sforge schema output       # JSON Schema of the --json envelope
+sforge schema output       # JSON Schema of the --json envelope and each command's data
 sforge version
+sforge mcp                 # MCP server on stdio for AI agents (--allow-infra adds provision/destroy)
 ```
 
 `sforge dev --json` and `sforge preview --json` write their envelope (with the `url`) as soon as the

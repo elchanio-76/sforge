@@ -3,9 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
+import { checkReportJsonSchema } from '@staticforge/checker';
 import { configJsonSchema } from '@staticforge/core';
 import { run } from '../src/main.js';
+import { outputJsonSchema } from '../src/output.js';
 import type { Io } from '../src/io.js';
+import { expectValidEnvelope } from './schema-validation.js';
 
 function sink() {
   const chunks: string[] = [];
@@ -52,14 +55,21 @@ function startSforge(args: string[], { cwd, variables = {} }: RunOptions = {}) {
 async function sforge(args: string[], options: RunOptions = {}) {
   const started = startSforge(args, options);
   const exitCode = await started.exit;
-  return { exitCode, stdout: started.stdout(), stderr: started.stderr() };
+  const stdout = started.stdout();
+  // Every --json document must match `sforge schema output`.
+  if (args.includes('--json') && stdout.trim() !== '') expectValidEnvelope(JSON.parse(stdout));
+  return { exitCode, stdout, stderr: started.stderr() };
 }
 
 /** Wait until the command has written its JSON envelope (servers write it when ready). */
 async function envelopeOf(started: ReturnType<typeof startSforge>) {
   for (let i = 0; i < 200; i++) {
     const text = started.stdout();
-    if (text.trim().endsWith('}')) return JSON.parse(text);
+    if (text.trim().endsWith('}')) {
+      const envelope = JSON.parse(text);
+      expectValidEnvelope(envelope);
+      return envelope;
+    }
     await new Promise((r) => setTimeout(r, 25));
   }
   throw new Error(`No envelope; stderr: ${started.stderr()}`);
@@ -350,10 +360,12 @@ describe('sforge CLI', () => {
     });
   });
 
-  it('keeps the committed config schema in sync', async () => {
-    const committed = JSON.parse(
-      readFileSync(new URL('../schema/staticforge.schema.json', import.meta.url), 'utf8'),
-    );
-    expect(committed, 'run `pnpm schema:generate`').toEqual(configJsonSchema());
+  it('keeps the committed schemas in sync', async () => {
+    const committed = (file: string) =>
+      JSON.parse(readFileSync(new URL(`../schema/${file}`, import.meta.url), 'utf8'));
+    const hint = 'run `pnpm schema:generate`';
+    expect(committed('staticforge.schema.json'), hint).toEqual(configJsonSchema());
+    expect(committed('output.schema.json'), hint).toEqual(outputJsonSchema());
+    expect(committed('diagnostics.schema.json'), hint).toEqual(checkReportJsonSchema());
   });
 });

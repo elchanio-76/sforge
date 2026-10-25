@@ -8,13 +8,14 @@ import { registerDeployCommands } from './commands/deploy.js';
 import { registerDevCommand } from './commands/dev.js';
 import { registerIacCommand } from './commands/iac.js';
 import { registerInitCommand } from './commands/init.js';
+import { registerMcpCommand } from './commands/mcp.js';
 import { registerNewCommand } from './commands/new.js';
 import { registerPreviewCommand } from './commands/preview.js';
 import { registerProvisionCommands } from './commands/provision.js';
 import { registerSchemaCommand } from './commands/schema.js';
 import { registerVersionCommand } from './commands/version.js';
 import { type Io, processIo } from './io.js';
-import { OUTPUT_SCHEMA_VERSION } from './output.js';
+import { type Envelope, OUTPUT_SCHEMA_VERSION } from './output.js';
 import { VERSION } from './version.js';
 
 export { defineConfig } from '@staticforge/core';
@@ -52,6 +53,7 @@ export function createProgram(runtime: Runtime): Command {
   registerConfigCommands(program, runtime);
   registerSchemaCommand(program, runtime);
   registerVersionCommand(program, runtime);
+  registerMcpCommand(program, runtime);
 
   return program;
 }
@@ -60,9 +62,9 @@ export function createProgram(runtime: Runtime): Command {
 export async function run(
   argv: string[],
   io: Io = processIo(),
-  providers?: Runtime['providers'],
+  hooks: Pick<Runtime, 'providers' | 'onResult'> = {},
 ): Promise<ExitCode> {
-  const runtime: Runtime = { io, exitCode: ExitCode.Ok, ...(providers && { providers }) };
+  const runtime: Runtime = { io, exitCode: ExitCode.Ok, ...hooks };
   const program = createProgram(runtime);
 
   try {
@@ -73,20 +75,14 @@ export async function run(
     // --help and --version exit through here with code 0.
     if (error.exitCode === 0) return ExitCode.Ok;
     // Commander has already printed the usage error to stderr.
-    if (argv.includes('--json')) {
-      io.stdout.write(
-        `${JSON.stringify(
-          {
-            schemaVersion: OUTPUT_SCHEMA_VERSION,
-            command: '',
-            ok: false,
-            error: { code: ErrorCode.Usage, message: error.message.replace(/^error: /, '') },
-          },
-          null,
-          2,
-        )}\n`,
-      );
-    }
+    const envelope: Envelope = {
+      schemaVersion: OUTPUT_SCHEMA_VERSION,
+      command: '',
+      ok: false,
+      error: { code: ErrorCode.Usage, message: error.message.replace(/^error: /, '') },
+    };
+    runtime.onResult?.({ envelope });
+    if (argv.includes('--json')) io.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
     return ExitCode.Usage;
   }
 }

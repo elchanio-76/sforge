@@ -43,6 +43,13 @@ jobs:
           pnpm sforge build --cwd examples/basic-site
           pnpm sforge check --cwd "$RUNNER_TEMP/site"
           pnpm sforge check --cwd examples/basic-site --format sarif --output "$RUNNER_TEMP/check.sarif"
+      - name: Smoke test the MCP server over stdio
+        run: |
+          (printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'; sleep 2) |
+            pnpm --silent sforge mcp --cwd examples/basic-site | grep -q '"sforge_build"'
 
   iac:
     name: HCL modules

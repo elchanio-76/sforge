@@ -9,7 +9,7 @@
   },
   "exports": {
     ".": {
-      "source": "./src/main.ts",
+      "@staticforge/source": "./src/main.ts",
       "types": "./dist/main.d.ts",
       "default": "./dist/main.js"
     }
@@ -22,6 +22,7 @@
     "node": "^22.22.0 || >=24.8.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.4.0",
     "@staticforge/aws": "workspace:*",
     "@staticforge/azure": "workspace:*",
     "@staticforge/build": "workspace:*",
@@ -30,6 +31,11 @@
     "@staticforge/dev-server": "workspace:*",
     "@staticforge/iac": "workspace:*",
     "@staticforge/provider-api": "workspace:*",
-    "commander": "^15.0.0"
+    "commander": "^15.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.4.0",
+    "ajv": "^8.20.0"
   }
 }

@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:staticforge:schema:diagnostics:v1",
+  "title": "staticforge check report",
+  "type": "object",
+  "required": [
+    "ok",
+    "failOn",
+    "pages",
+    "rendered",
+    "diagnostics",
+    "summary",
+    "durationMs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "type": "boolean",
+      "description": "No diagnostics at or above failOn."
+    },
+    "failOn": {
+      "enum": [
+        "error",
+        "warning"
+      ]
+    },
+    "pages": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Built pages checked."
+    },
+    "rendered": {
+      "enum": [
+        "ran",
+        "skipped",
+        "off"
+      ],
+      "description": "Whether headless (axe-core) checks ran; skipped when Chromium is missing."
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "error",
+        "warning",
+        "info"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "info": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "fixes": {
+      "type": "object",
+      "required": [
+        "applied",
+        "files",
+        "diff"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "applied": {
+          "type": "boolean",
+          "description": "False for --dry-run."
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "file",
+              "ruleIds",
+              "edits"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "ruleIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "edits": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "diff": {
+          "type": "string",
+          "description": "Unified diff of the fixes."
+        }
+      }
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "ruleId",
+        "severity",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ruleId": {
+          "type": "string",
+          "description": "Stable rule ID. Rules from html-validate start with \"html/\", axe-core with \"axe/\"."
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string",
+          "description": "Project-relative source file, POSIX separators."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "type": "string",
+          "description": "URL of the built page, e.g. \"/about/\"."
+        },
+        "selector": {
+          "type": "string",
+          "description": "CSS selector of the element in the built page."
+        },
+        "wcag": {
+          "type": "string",
+          "pattern": "^\\d\\.\\d\\.\\d+$",
+          "description": "WCAG success criterion."
+        },
+        "fixable": {
+          "type": "boolean",
+          "description": "Whether `sforge check --fix` can repair it."
+        },
+        "hint": {
+          "type": "string"
+        },
+        "helpUrl": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ import type { DeployOptions, Deployer, Provider } from '@staticforge/provider-ap
 import { applyCreates, fakeEngine, planCreates } from '../../providers/iac/test/fake-engine.js';
 import type { Io } from '../src/io.js';
 import { run } from '../src/main.js';
+import { expectValidEnvelope } from './schema-validation.js';
 
 function sink() {
   const chunks: string[] = [];
@@ -45,8 +46,14 @@ async function sforge(args: string[], options: Options) {
       return answers.shift() ?? '';
     },
   };
-  const exitCode = await run(['node', 'sforge', ...args], io, options.providers);
+  const exitCode = await run(
+    ['node', 'sforge', ...args],
+    io,
+    options.providers ? { providers: options.providers } : {},
+  );
   const out = stdout.text();
+  // Every --json document must match `sforge schema output`.
+  if (args.includes('--json') && out.trim() !== '') expectValidEnvelope(JSON.parse(out));
   return {
     exitCode,
     stdout: out,

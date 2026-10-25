@@ -11,6 +11,19 @@ export interface Runtime {
   exitCode: ExitCode;
   /** Cloud providers to use instead of the real ones (tests). */
   providers?: Partial<Record<Provider['id'], Provider>>;
+  /**
+   * Receives every command's outcome, in --json mode or not, before a
+   * long-running command starts waiting (in-process callers: the MCP server).
+   */
+  onResult?(outcome: Outcome): void;
+}
+
+export interface Outcome {
+  envelope: Envelope;
+  /** The human-readable rendering, when the command has one. */
+  text?: string;
+  /** The current data of a long-running command (e.g. the dev server's latest build). */
+  live?: () => unknown;
 }
 
 export interface CommandResult<T> {
@@ -24,6 +37,8 @@ export interface CommandResult<T> {
    * command is ready, then the process stays up until this settles.
    */
   wait?: Promise<void>;
+  /** For long-running commands: the current `data`, for {@link Runtime.onResult}. */
+  live?: () => T;
 }
 
 export interface ActionInput {
@@ -59,13 +74,19 @@ export function action<T>(runtime: Runtime, handler: Handler<T>) {
     try {
       const result = await handler(ctx, { args: raw.slice(0, -2), options: command.opts() });
       const ok = result.ok ?? true;
+      const envelope: Envelope = {
+        schemaVersion: OUTPUT_SCHEMA_VERSION,
+        command: name,
+        ok,
+        data: result.data,
+      };
+      runtime.onResult?.({
+        envelope,
+        ...(result.text !== undefined && { text: result.text }),
+        ...(result.live && { live: result.live }),
+      });
       if (ctx.json) {
-        writeEnvelope(runtime.io, {
-          schemaVersion: OUTPUT_SCHEMA_VERSION,
-          command: name,
-          ok,
-          data: result.data,
-        });
+        writeEnvelope(runtime.io, envelope);
       } else if (result.text !== undefined) {
         runtime.io.stdout.write(result.text.endsWith('\n') ? result.text : `${result.text}\n`);
       }
@@ -73,13 +94,15 @@ export function action<T>(runtime: Runtime, handler: Handler<T>) {
       await result.wait;
     } catch (thrown) {
       const error = toSforgeError(thrown);
+      const envelope: Envelope = {
+        schemaVersion: OUTPUT_SCHEMA_VERSION,
+        command: name,
+        ok: false,
+        error: error.toJSON(),
+      };
+      runtime.onResult?.({ envelope });
       if (ctx.json) {
-        writeEnvelope(runtime.io, {
-          schemaVersion: OUTPUT_SCHEMA_VERSION,
-          command: name,
-          ok: false,
-          error: error.toJSON(),
-        });
+        writeEnvelope(runtime.io, envelope);
       } else {
         ctx.logger.error(error.message);
         if (error.hint !== undefined) ctx.logger.info(`hint: ${error.hint}`);

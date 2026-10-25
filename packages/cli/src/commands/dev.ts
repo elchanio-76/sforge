@@ -58,22 +58,27 @@ export function registerDevCommand(program: Command, runtime: Runtime): void {
           void server.close().then(resolve);
         });
       });
-      const first = server.state;
-      return {
-        ok: true,
-        data: {
+      // The latest build: the first one now, later ones for in-process callers.
+      const data = () => {
+        const state = server.state;
+        return {
           url: server.url,
           host: server.host,
           port: server.port,
           rootDir: server.rootDir,
           build: {
-            ok: first.ok,
-            summary: first.result?.summary,
-            pages: first.result?.pages,
-            diagnostics: first.diagnostics,
-            error: first.error,
+            ok: state.ok,
+            summary: state.result?.summary,
+            pages: state.result?.pages,
+            diagnostics: state.diagnostics,
+            error: state.error,
           },
-        },
+        };
+      };
+      return {
+        ok: true,
+        data: data(),
+        live: data,
         text: `Dev server running at ${server.url}\nWatching ${server.rootDir} for changes. Press Ctrl+C to stop.`,
         wait: stopped,
       };

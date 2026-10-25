@@ -1,0 +1,1537 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:staticforge:schema:output:v1",
+  "title": "staticforge --json output envelope",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "command",
+    "ok"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "command": {
+      "type": "string",
+      "description": "Command path, e.g. \"config validate\"; empty for usage errors."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "False when the command failed or found failures."
+    },
+    "data": {
+      "description": "Command-specific result; see the per-command rules below."
+    },
+    "error": {
+      "$ref": "#/$defs/error"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "init"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/init-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "new"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/new-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "build"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/build-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "check"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/check-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "dev"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/dev-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "preview"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/preview-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "provision"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/provision-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "status"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/status-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "destroy"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/destroy-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "iac"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/iac-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "deploy"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/deploy-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "versions"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/versions-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "rollback"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/rollback-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "preview-destroy"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/preview-destroy-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "config validate"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/config-validate-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "config show"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/config-show-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "schema"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/schema-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "version"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/version-data"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "ruleId",
+        "severity",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ruleId": {
+          "type": "string",
+          "description": "Stable rule ID. Rules from html-validate start with \"html/\", axe-core with \"axe/\"."
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string",
+          "description": "Project-relative source file, POSIX separators."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "type": "string",
+          "description": "URL of the built page, e.g. \"/about/\"."
+        },
+        "selector": {
+          "type": "string",
+          "description": "CSS selector of the element in the built page."
+        },
+        "wcag": {
+          "type": "string",
+          "pattern": "^\\d\\.\\d\\.\\d+$",
+          "description": "WCAG success criterion."
+        },
+        "fixable": {
+          "type": "boolean",
+          "description": "Whether `sforge check --fix` can repair it."
+        },
+        "hint": {
+          "type": "string"
+        },
+        "helpUrl": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "error",
+        "warning",
+        "info"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "info": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^SF_[A-Z_]+$"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {},
+        "hint": {
+          "type": "string"
+        }
+      }
+    },
+    "builtPage": {
+      "type": "object",
+      "required": [
+        "url",
+        "output",
+        "layout"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "URL of the page, e.g. \"/about/\"."
+        },
+        "output": {
+          "type": "string",
+          "description": "Path of the HTML file relative to the output directory."
+        },
+        "layout": {
+          "type": "string",
+          "description": "Layout used, or \"document\" for HTML documents that pass through."
+        },
+        "source": {
+          "type": "string",
+          "description": "Project-relative source file; absent for generated pages."
+        }
+      }
+    },
+    "resourceChange": {
+      "type": "object",
+      "required": [
+        "address",
+        "action"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Resource address, e.g. \"module.site.aws_s3_bucket.site\"."
+        },
+        "action": {
+          "enum": [
+            "create",
+            "update",
+            "delete",
+            "replace",
+            "read",
+            "noop",
+            "move"
+          ]
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "required": [
+        "changes",
+        "add",
+        "change",
+        "remove",
+        "import",
+        "resources",
+        "drift"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "changes": {
+          "type": "boolean",
+          "description": "True when applying the plan would change something."
+        },
+        "add": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "change": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "remove": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "import": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resourceChange"
+          }
+        },
+        "drift": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resourceChange"
+          },
+          "description": "Changes made outside OpenTofu/Terraform, found while refreshing."
+        },
+        "planFile": {
+          "type": "string",
+          "description": "Saved plan file."
+        }
+      }
+    },
+    "engine": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "enum": [
+            "tofu",
+            "terraform"
+          ]
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "deployedVersion": {
+      "type": "object",
+      "required": [
+        "id",
+        "createdAt",
+        "files",
+        "bytes",
+        "active",
+        "preview"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Version id (`<UTC timestamp>-<git sha>`) or preview id."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO 8601 time of the deploy."
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "active": {
+          "type": "boolean",
+          "description": "True for the version production serves."
+        },
+        "preview": {
+          "type": "boolean"
+        },
+        "gitSha": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "init-data": {
+      "type": "object",
+      "required": [
+        "rootDir",
+        "configPath",
+        "created",
+        "skipped"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rootDir": {
+          "type": "string"
+        },
+        "configPath": {
+          "type": "string"
+        },
+        "created": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Project-relative paths written."
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Project-relative paths left alone because they existed."
+        }
+      }
+    },
+    "new-data": {
+      "type": "object",
+      "required": [
+        "file",
+        "url"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Project-relative path of the new source file."
+        },
+        "url": {
+          "type": "string",
+          "description": "URL the page will have."
+        }
+      }
+    },
+    "build-data": {
+      "type": "object",
+      "required": [
+        "ok",
+        "outDir",
+        "pages",
+        "fileCount",
+        "drafts",
+        "diagnostics",
+        "summary",
+        "durationMs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "description": "False when the build reported errors."
+        },
+        "outDir": {
+          "type": "string",
+          "description": "Absolute output directory."
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/builtPage"
+          }
+        },
+        "fileCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Files written, including pages."
+        },
+        "drafts": {
+          "type": "object",
+          "required": [
+            "skipped"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "skipped": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Draft sources left out of the build."
+            }
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnostic"
+          }
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "check-data": {
+      "type": "object",
+      "required": [
+        "ok",
+        "failOn",
+        "pages",
+        "rendered",
+        "diagnostics",
+        "summary",
+        "durationMs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "description": "No diagnostics at or above failOn."
+        },
+        "failOn": {
+          "enum": [
+            "error",
+            "warning"
+          ]
+        },
+        "pages": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Built pages checked."
+        },
+        "rendered": {
+          "enum": [
+            "ran",
+            "skipped",
+            "off"
+          ],
+          "description": "Whether headless (axe-core) checks ran; skipped when Chromium is missing."
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnostic"
+          }
+        },
+        "summary": {
+          "type": "object",
+          "required": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "warning": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "info": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "fixes": {
+          "type": "object",
+          "required": [
+            "applied",
+            "files",
+            "diff"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "applied": {
+              "type": "boolean",
+              "description": "False for --dry-run."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "ruleIds",
+                  "edits"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "ruleIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "edits": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            },
+            "diff": {
+              "type": "string",
+              "description": "Unified diff of the fixes."
+            }
+          }
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dev-data": {
+      "type": "object",
+      "required": [
+        "url",
+        "host",
+        "port",
+        "rootDir",
+        "build"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Where the server listens, e.g. \"http://127.0.0.1:4321/\"."
+        },
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rootDir": {
+          "type": "string"
+        },
+        "build": {
+          "type": "object",
+          "required": [
+            "ok",
+            "diagnostics"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/diagnostic"
+              },
+              "description": "Build diagnostics plus the static checker findings."
+            },
+            "summary": {
+              "$ref": "#/$defs/summary"
+            },
+            "pages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/builtPage"
+              }
+            },
+            "error": {
+              "$ref": "#/$defs/error",
+              "description": "Set when the build could not run."
+            }
+          }
+        }
+      }
+    },
+    "preview-data": {
+      "type": "object",
+      "required": [
+        "url",
+        "host",
+        "port",
+        "dir"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Where the server listens, e.g. \"http://127.0.0.1:4321/\"."
+        },
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dir": {
+          "type": "string",
+          "description": "The directory served."
+        }
+      }
+    },
+    "provision-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "provider",
+        "engine",
+        "workspace",
+        "plan",
+        "applied",
+        "notices"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "provider": {
+          "type": "string"
+        },
+        "engine": {
+          "$ref": "#/$defs/engine"
+        },
+        "workspace": {
+          "type": "string",
+          "description": "The generated OpenTofu/Terraform workspace."
+        },
+        "plan": {
+          "$ref": "#/$defs/plan"
+        },
+        "applied": {
+          "type": "boolean",
+          "description": "False for --diff, when nothing changed, or when declined."
+        },
+        "notices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Instructions for the user, e.g. DNS records to create."
+        },
+        "bootstrap": {
+          "type": "object",
+          "required": [
+            "backend",
+            "description",
+            "created"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "backend": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "created": {
+              "type": "boolean"
+            }
+          }
+        },
+        "apply": {
+          "type": "object",
+          "required": [
+            "add",
+            "change",
+            "remove"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "add": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "change": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "remove": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "outputs": {
+          "type": "object",
+          "description": "Non-sensitive infrastructure outputs (OpenTofu/Terraform `output` values)."
+        },
+        "pending": {
+          "type": "boolean",
+          "description": "True when provisioning stopped after the pre-phase (--no-wait)."
+        }
+      }
+    },
+    "status-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "provider",
+        "engine",
+        "drift",
+        "drifted",
+        "outputs",
+        "versionId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "provider": {
+          "type": "string"
+        },
+        "engine": {
+          "$ref": "#/$defs/engine"
+        },
+        "drift": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resourceChange"
+          }
+        },
+        "drifted": {
+          "type": "boolean"
+        },
+        "outputs": {
+          "type": "object",
+          "description": "Non-sensitive infrastructure outputs (OpenTofu/Terraform `output` values)."
+        },
+        "versionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The version production serves."
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "destroy-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "provider",
+        "plan",
+        "destroyed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "provider": {
+          "type": "string"
+        },
+        "plan": {
+          "$ref": "#/$defs/plan"
+        },
+        "destroyed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "iac-data": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "target",
+            "workspace",
+            "engine"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "Target name from the config."
+            },
+            "workspace": {
+              "type": "string"
+            },
+            "engine": {
+              "type": "object",
+              "required": [
+                "name",
+                "path",
+                "version",
+                "source"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "enum": [
+                    "tofu",
+                    "terraform"
+                  ]
+                },
+                "path": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "source": {
+                  "enum": [
+                    "env",
+                    "path",
+                    "cache",
+                    "download"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "target",
+            "command",
+            "exitCode",
+            "workspace",
+            "diagnostics"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "Target name from the config."
+            },
+            "command": {
+              "type": "string"
+            },
+            "exitCode": {
+              "type": "integer"
+            },
+            "workspace": {
+              "type": "string"
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "severity",
+                  "summary"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "severity": {
+                    "enum": [
+                      "error",
+                      "warning"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "detail": {
+                    "type": "string"
+                  },
+                  "address": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "deploy-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "provider",
+        "versionId",
+        "url",
+        "preview",
+        "uploaded",
+        "copied",
+        "skipped",
+        "deleted",
+        "bytes",
+        "pruned",
+        "invalidated",
+        "dryRun",
+        "buildDir"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "provider": {
+          "enum": [
+            "aws",
+            "azure"
+          ]
+        },
+        "versionId": {
+          "type": "string",
+          "description": "The new version id, or the preview id."
+        },
+        "url": {
+          "type": "string",
+          "description": "Where the version or preview is served."
+        },
+        "preview": {
+          "type": "boolean"
+        },
+        "uploaded": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Files sent from this machine."
+        },
+        "copied": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unchanged files copied server-side from the previous version."
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unchanged files already in place (preview redeploys)."
+        },
+        "deleted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Files removed (preview redeploys)."
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Bytes uploaded."
+        },
+        "pruned": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Older versions removed beyond retainVersions."
+        },
+        "invalidated": {
+          "type": "boolean",
+          "description": "Whether the CDN cache was invalidated."
+        },
+        "dryRun": {
+          "type": "boolean",
+          "description": "True when nothing was changed."
+        },
+        "buildDir": {
+          "type": "string",
+          "description": "The deployed build directory."
+        },
+        "previousVersionId": {
+          "type": "string",
+          "description": "The version production served before."
+        },
+        "check": {
+          "type": "object",
+          "required": [
+            "summary",
+            "rendered"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "summary": {
+              "$ref": "#/$defs/summary"
+            },
+            "rendered": {
+              "enum": [
+                "ran",
+                "skipped",
+                "off"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "versions-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "versions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deployedVersion"
+          },
+          "description": "Production versions (newest first), then previews."
+        }
+      }
+    },
+    "rollback-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "versionId",
+        "previousVersionId",
+        "url"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "versionId": {
+          "type": "string",
+          "description": "The version now served."
+        },
+        "previousVersionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "preview-destroy-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "previewId",
+        "deleted",
+        "existed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "previewId": {
+          "type": "string"
+        },
+        "deleted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Files removed."
+        },
+        "existed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "config-validate-data": {
+      "type": "object",
+      "required": [
+        "valid",
+        "path",
+        "rootDir",
+        "targets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "valid": {
+          "const": true
+        },
+        "path": {
+          "type": "string",
+          "description": "The config file."
+        },
+        "rootDir": {
+          "type": "string"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Target names."
+        }
+      }
+    },
+    "config-show-data": {
+      "type": "object",
+      "required": [
+        "path",
+        "config"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The config file."
+        },
+        "config": {
+          "type": "object",
+          "description": "The resolved config with defaults applied (see `sforge schema config`)."
+        }
+      }
+    },
+    "schema-data": {
+      "type": "object",
+      "description": "The requested JSON Schema."
+    },
+    "version-data": {
+      "type": "object",
+      "required": [
+        "version",
+        "node",
+        "platform",
+        "arch"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "node": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "arch": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
