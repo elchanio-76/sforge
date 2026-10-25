@@ -168,6 +168,7 @@ function siteWorkflow(options: WorkflowOptions): string {
   const check = `check:
   name: Build and check
   runs-on: ubuntu-latest
+  timeout-minutes: 20
   permissions:
     contents: read
     security-events: write # upload the findings to code scanning
@@ -195,6 +196,7 @@ ${indent(setupSteps(options), 4)}
   if: github.event_name == 'pull_request' && ${SAME_REPO}
   needs: check
   runs-on: ubuntu-latest
+  timeout-minutes: 30
   permissions:
     contents: read
     id-token: write # sign in to the cloud with GitHub's OIDC token
@@ -223,6 +225,7 @@ ${indent(targetEnv(t), 6)}      run: |
   if: always() && github.event_name == 'pull_request' && ${SAME_REPO}
   needs: [${previews.map((t) => `preview-${t.name}`).join(', ')}]
   runs-on: ubuntu-latest
+  timeout-minutes: 5
   permissions:
     pull-requests: write
   steps:
@@ -263,6 +266,7 @@ ${previews
   if: github.event_name == 'push' && github.ref == 'refs/heads/${t.branch}'
   needs: check
   runs-on: ubuntu-latest
+  timeout-minutes: 30
 ${
   t.environment === undefined
     ? ''
@@ -307,6 +311,7 @@ function cleanupWorkflow(options: WorkflowOptions): string {
   name: Remove the preview on ${t.name}
   if: ${SAME_REPO}
   runs-on: ubuntu-latest
+  timeout-minutes: 15
   permissions:
     contents: read
     id-token: write # sign in to the cloud with GitHub's OIDC token
@@ -335,6 +340,7 @@ function rollbackWorkflow(options: WorkflowOptions): string {
   name: Roll back ${t.name}
   if: inputs.target == '${t.name}'
   runs-on: ubuntu-latest
+  timeout-minutes: 30
 ${t.environment === undefined ? '' : `  environment: ${t.environment}\n`}  permissions:
     contents: read
     id-token: write # sign in to the cloud with GitHub's OIDC token

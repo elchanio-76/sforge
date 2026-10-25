@@ -88,6 +88,7 @@ type Workflow = {
       needs?: string | string[];
       environment?: string | { name: string };
       permissions: Record<string, string>;
+      'timeout-minutes': number;
       steps: { uses?: string; run?: string; with?: Record<string, unknown> }[];
     }
   >;
@@ -166,6 +167,13 @@ describe('sforge ci init', () => {
     // Azure rolls back by rebuilding an older commit: it needs the history.
     expect(rollback.jobs['rollback-azure']!.steps[0]!.with).toEqual({ 'fetch-depth': 0 });
     expect(rollback.jobs['rollback-aws']!.steps[0]!.with).toBeUndefined();
+
+    // A hung step (e.g. an apt mirror) must not hold a runner for GitHub's six hours.
+    for (const file of [site, cleanup, rollback]) {
+      for (const [name, job] of Object.entries(file.jobs)) {
+        expect(job['timeout-minutes'], name).toBeGreaterThan(0);
+      }
+    }
   });
 
   it('pins every action to a commit and reads only the variables it lists', async () => {
