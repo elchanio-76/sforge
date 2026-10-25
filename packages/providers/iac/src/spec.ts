@@ -104,11 +104,14 @@ export interface PreparedTarget {
   /**
    * Resources applied first, on their own (`-target`), e.g. a certificate
    * whose DNS validation records the user must create before the rest can
-   * be applied. `describe` turns the outputs into instructions to print.
+   * be applied. `describe` turns the outputs into instructions to print;
+   * `wait`, if given, resolves once the rest can be applied (e.g. a DNS record
+   * resolves), and is skipped with `noWait`.
    */
   prePhase?: {
     targets: string[];
     describe(outputs: Record<string, unknown>): string | undefined;
+    wait?(outputs: Record<string, unknown>, logger: Logger): Promise<void>;
   };
 }
 

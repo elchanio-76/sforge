@@ -272,7 +272,8 @@ export async function provision(options: ProvisionOptions): Promise<ProvisionRes
       }
       await apply(ws, first.planFile);
     }
-    const notice = prepared.prePhase.describe(publicOutputs(await outputs(ws)));
+    const values = publicOutputs(await outputs(ws));
+    const notice = prepared.prePhase.describe(values);
     if (notice !== undefined) {
       notices.push(notice);
       options.logger.info(notice);
@@ -288,6 +289,7 @@ export async function provision(options: ProvisionOptions): Promise<ProvisionRes
         pending: true,
       };
     }
+    await prepared.prePhase.wait?.(values, options.logger);
   }
   const planned = withoutExpectedDrift(await plan(ws), prepared);
   const base = { ...result, ...(bootstrap && { bootstrap }), plan: planned, notices };

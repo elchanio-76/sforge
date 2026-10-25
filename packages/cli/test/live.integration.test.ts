@@ -137,6 +137,10 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 75 *
   let dir = '';
   let url = '';
   let provisioned = false;
+  /** The tests after the first need its URL: fail at once instead of polling nothing. */
+  const requireUrl = () => {
+    if (url === '') throw new Error('Provisioning failed (see the first test); skipping');
+  };
 
   beforeAll(async () => {
     const account = await cloudAccount();
@@ -235,6 +239,7 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 75 *
   });
 
   it('deploys, and serves the site with production URL semantics and headers', async () => {
+    requireUrl();
     const first = await sforge(dir, 'deploy', target, '--no-headless');
     expect(first.dryRun).toBe(false);
 
@@ -284,6 +289,7 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 75 *
   });
 
   it('deploys a change, keeps the infrastructure free of drift, and rolls back', async () => {
+    requireUrl();
     const about = join(dir, 'content', 'about.md');
     writeFileSync(about, `${readFileSync(about, 'utf8')}\n\nLive marker ${id}.\n`);
     commit(dir, 'v2');
@@ -312,6 +318,7 @@ describe.runIf(provider !== undefined)(`live ${provider} cycle`, { timeout: 75 *
   it.runIf(previewDomain !== undefined)(
     'deploys and removes a preview on its own host',
     async () => {
+      requireUrl();
       const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');
       const previewUrl = `https://pr-1.${previewDomain}`;
       expect(String(preview.url).replace(/\/$/, '')).toBe(previewUrl);

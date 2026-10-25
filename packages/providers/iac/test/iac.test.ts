@@ -534,6 +534,58 @@ describe('provision', () => {
     ]);
   });
 
+  it('applies the pre-phase, waits, then applies the rest; --no-wait stops after it', async () => {
+    const { rootDir, config } = project();
+    const script = {
+      plan: planCreates('module.site.aws_s3_bucket.site'),
+      apply: applyCreates('module.site.aws_s3_bucket.site'),
+      output: outputsStep,
+    };
+    const events: string[] = [];
+    const base = profile();
+    const phased: IacProfile = {
+      provider: 'aws',
+      async prepare(input) {
+        return {
+          ...(await base.prepare(input)),
+          prePhase: {
+            targets: ['module.site.aws_acm_certificate.site'],
+            describe: (outputs) => `Create a record for ${String(outputs.bucket)}`,
+            wait: async (outputs) => {
+              events.push(`wait ${String(outputs.bucket)}`);
+            },
+          },
+        };
+      },
+    };
+    const fake = fakeEngine(script);
+    const run = (noWait: boolean) =>
+      provision({
+        rootDir,
+        config,
+        targetName: 'staging',
+        profile: phased,
+        logger,
+        engine: fake.engine,
+        env: {},
+        noWait,
+      });
+
+    const stopped = await run(true);
+    expect(stopped).toMatchObject({ pending: true, notices: ['Create a record for site-bucket'] });
+    expect(events).toEqual([]);
+
+    const done = await run(false);
+    expect(done.applied).toBe(true);
+    expect(events).toEqual(['wait site-bucket']);
+    const plans = fake.calls().filter((c) => c.args[0] === 'plan');
+    // Without --no-wait: the targeted plan, then the full plan after the wait.
+    expect(plans.slice(-2).map((c) => c.args.some((a) => a.startsWith('-target=')))).toEqual([
+      true,
+      false,
+    ]);
+  });
+
   it('does not apply when declined or when nothing changed', async () => {
     const { rootDir, config } = project();
     const fake = fakeEngine({ plan: planCreates('a.b'), output: outputsStep });

@@ -12,6 +12,7 @@ import {
   projectName,
   withDns,
 } from '@staticforge/iac';
+import { type CnameLookup, waitForCname } from './cname.js';
 import { type AzureClients, azureError, defaultClients, httpStatus } from './clients.js';
 
 /** Packaged HCL, next to src/ and dist/. */
@@ -244,12 +245,20 @@ export function describeCname(outputs: Record<string, unknown>): string | undefi
     { name: string; type: string; value: string }[] | undefined;
   if (records === undefined || records.length === 0) return undefined;
   return [
-    'Create this DNS record (provisioning waits until Azure has validated it):',
+    'Create this DNS record (provisioning waits until it resolves):',
     ...records.map((r) => `  ${r.name} ${r.type} ${r.value}`),
   ].join('\n');
 }
 
-export function createAzureIacProfile(clients: AzureClients = defaultClients()): IacProfile {
+export interface AzureIacOptions {
+  /** DNS lookups for the custom domain's CNAME (tests). */
+  cname?: CnameLookup;
+}
+
+export function createAzureIacProfile(
+  clients: AzureClients = defaultClients(),
+  options: AzureIacOptions = {},
+): IacProfile {
   return {
     provider: 'azure',
     async prepare(input: ProfileInput): Promise<PreparedTarget> {
@@ -342,15 +351,23 @@ export function createAzureIacProfile(clients: AzureClients = defaultClients()):
           exists,
           bootstrap,
         },
-        // Without a DNS provider, create the app first and print the CNAME; the custom
-        // domain then waits (polling Azure's validation) until the user has created it.
-        ...(target.domain !== undefined &&
-          dns === undefined && {
-            prePhase: {
-              targets: ['module.site.azurerm_static_web_app.site'],
-              describe: describeCname,
-            },
-          }),
+        // Azure refuses a custom domain whose CNAME does not resolve yet, and does not
+        // retry. So the app (and, with a DNS provider, its CNAME) is created first, then
+        // provisioning waits until the zone's nameservers answer with the CNAME (the user
+        // creates it from the printed instructions when sforge does not manage DNS).
+        ...(target.domain !== undefined && {
+          prePhase: {
+            targets: [
+              'module.site.azurerm_static_web_app.site',
+              ...(dns === undefined ? [] : ['module.dns_routing']),
+            ],
+            describe: dns === undefined ? describeCname : () => undefined,
+            wait: (outputs, logger) =>
+              waitForCname(target.domain!, String(outputs.default_host_name), logger, {
+                ...(options.cname && { lookup: options.cname }),
+              }),
+          },
+        }),
       };
     },
   };

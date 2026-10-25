@@ -203,7 +203,12 @@ describe('Azure IaC profile', () => {
         },
       },
     ]);
-    expect(prepared.prePhase).toBeUndefined();
+    // Azure refuses the domain until its CNAME resolves: app and CNAME first, then wait.
+    expect(prepared.prePhase?.targets).toEqual([
+      'module.site.azurerm_static_web_app.site',
+      'module.dns_routing',
+    ]);
+    expect(prepared.prePhase?.describe({ dns_records: [] })).toBeUndefined();
   });
 
   it('prints the CNAME first when sforge does not manage the DNS', async () => {
@@ -217,10 +222,28 @@ describe('Azure IaC profile', () => {
         dns_records: [{ name: 'www.example.com', type: 'CNAME', value: 'x.azurestaticapps.net' }],
       }),
     ).toBe(
-      'Create this DNS record (provisioning waits until Azure has validated it):\n' +
+      'Create this DNS record (provisioning waits until it resolves):\n' +
         '  www.example.com CNAME x.azurestaticapps.net',
     );
     expect(describeCname({ dns_records: [] })).toBeUndefined();
+  });
+
+  it('waits for the CNAME to the app before adding the domain', async () => {
+    const asked: string[] = [];
+    const azure = fakeAzure();
+    const { request } = input(azure, { domain: 'www.example.com' });
+    const profile = createAzureIacProfile(azure.clients, {
+      cname: {
+        nameservers: async () => ['ns1.example.net'],
+        cname: async (name) => {
+          asked.push(name);
+          return 'x.azurestaticapps.net';
+        },
+      },
+    });
+    const prepared = await profile.prepare(request);
+    await prepared.prePhase?.wait?.({ default_host_name: 'x.azurestaticapps.net' }, logger);
+    expect(asked).toEqual(['www.example.com']);
   });
 
   it.each([
