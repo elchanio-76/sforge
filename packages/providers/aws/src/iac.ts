@@ -90,7 +90,9 @@ async function bucketExists(clients: AwsClients, bucket: string, region: string)
         ErrorCode.CloudAuth,
         `The state bucket ${bucket} exists but this AWS identity cannot access it`,
         {
-          hint: 'Bucket names are global: if another account owns it, set targets.<name>.state.bucket.',
+          hint:
+            'Provision with administrator credentials: CI deploy roles can only read their own state. ' +
+            'Bucket names are global, so if another account owns it, set targets.<name>.state.bucket.',
         },
       );
     }
