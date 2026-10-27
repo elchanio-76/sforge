@@ -52,8 +52,8 @@ output "validation_records" {
 }
 
 output "dns_records" {
-  description = "Records pointing the custom domain at CloudFront (created when hosted_zone is set)."
-  value = [for name in local.aliases : {
+  description = "Records pointing the custom domain at CloudFront (created when hosted_zone is set). Empty with private_dns."
+  value = var.private_dns ? [] : [for name in local.aliases : {
     name  = name
     type  = "CNAME"
     value = aws_cloudfront_distribution.site.domain_name
@@ -74,7 +74,7 @@ output "dns_validation_records" {
 output "dns_routing_records" {
   description = "dns_records keyed by name, for a DNS module to create."
   value = {
-    for name in local.aliases : name => {
+    for name in(var.private_dns ? [] : local.aliases) : name => {
       name  = name
       type  = "CNAME"
       value = aws_cloudfront_distribution.site.domain_name
@@ -88,4 +88,28 @@ output "ci_role_arn" {
 
 output "oidc_provider_arn" {
   value = local.oidc_provider_arn
+}
+
+output "dns_private_records" {
+  description = "With private_dns: the records to create in the internal DNS zone (never published)."
+  value = var.private_dns ? [for name in local.aliases : {
+    name  = name
+    type  = "CNAME"
+    value = aws_cloudfront_distribution.site.domain_name
+  }] : []
+}
+
+output "sign_in_url" {
+  description = "Where users of a private site sign in."
+  value       = local.auth ? "https://${local.auth_login_host}/_sforge/auth/login" : null
+}
+
+output "auth_user_pool_id" {
+  description = "Cognito user pool of a private site (sforge users)."
+  value       = local.auth ? aws_cognito_user_pool.site[0].id : null
+}
+
+output "auth_key_parameter" {
+  description = "SSM parameter holding the session cookie key for the sign-in Lambda (the router's copy is the KVS key auth:key)."
+  value       = local.auth ? aws_ssm_parameter.auth_key[0].name : null
 }

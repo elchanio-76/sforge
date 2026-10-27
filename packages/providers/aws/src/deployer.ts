@@ -118,6 +118,7 @@ export function createAwsDeployer(
 ): Deployer {
   const target = context.target as AwsTargetConfig;
   const { logger } = context;
+  const privateSite = target.auth !== undefined;
   let resolved: Outputs | undefined;
   const out = () => (resolved ??= readOutputs(context));
   const s3 = () => clients.s3(out().region);
@@ -246,7 +247,7 @@ export function createAwsDeployer(
         CopySource: copySource(out().bucket, `${versionPrefix(id)}404.html`),
         MetadataDirective: 'REPLACE',
         ContentType: 'text/html; charset=utf-8',
-        CacheControl: 'public, max-age=0, must-revalidate',
+        CacheControl: cacheControl('revalidate', privateSite),
       }),
     );
   }
@@ -384,7 +385,7 @@ export function createAwsDeployer(
               Body: createReadStream(join(options.buildDir, file.path)),
               ContentLength: file.entry.size,
               ContentType: contentType(file.path),
-              CacheControl: cacheControl(file.entry.cache),
+              CacheControl: cacheControl(file.entry.cache, privateSite),
               ChecksumSHA256: Buffer.from(file.entry.sha256, 'hex').toString('base64'),
               Metadata: { sha256: file.entry.sha256 },
             }),

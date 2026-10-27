@@ -272,6 +272,24 @@ describe('AWS deployer', () => {
     expect(versions).toMatchObject({ active: id, versions: [{ id, files: 5, gitSha: 'abc1234' }] });
   });
 
+  it('keeps the pages of private targets out of shared caches', async () => {
+    const objects = fakeBucket();
+    fakeKvs();
+    const { versionId } = await deployer(config({ auth: {} })).deploy({
+      buildDir: writeBuild(site, ['assets/site.4f2a.css']),
+      gitSha: 'abc1234',
+    });
+    expect(objects.get(`v/${versionId}/index.html`)?.cacheControl).toBe(
+      'private, max-age=0, must-revalidate',
+    );
+    expect(objects.get(`v/${versionId}/assets/site.4f2a.css`)?.cacheControl).toBe(
+      'public, max-age=31536000, immutable',
+    );
+    expect(objects.get('_sforge/errors/404.html')?.cacheControl).toBe(
+      'private, max-age=0, must-revalidate',
+    );
+  });
+
   it('copies unchanged files server-side, prunes old versions and rolls back', async () => {
     const objects = fakeBucket();
     const store = fakeKvs();

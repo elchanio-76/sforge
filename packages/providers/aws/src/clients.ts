@@ -3,8 +3,10 @@
 import '@aws-sdk/signature-v4a';
 import { CloudFrontClient } from '@aws-sdk/client-cloudfront';
 import { CloudFrontKeyValueStoreClient } from '@aws-sdk/client-cloudfront-keyvaluestore';
+import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
 import { IAMClient } from '@aws-sdk/client-iam';
 import { S3Client } from '@aws-sdk/client-s3';
+import { SSMClient } from '@aws-sdk/client-ssm';
 import { STSClient } from '@aws-sdk/client-sts';
 import { ErrorCode, SforgeError } from '@staticforge/core';
 
@@ -15,6 +17,8 @@ export interface AwsClients {
   iam(): IAMClient;
   cloudfront(): CloudFrontClient;
   kvs(): CloudFrontKeyValueStoreClient;
+  ssm(region: string): SSMClient;
+  cognito(region: string): CognitoIdentityProviderClient;
 }
 
 export function defaultClients(): AwsClients {
@@ -29,6 +33,9 @@ export function defaultClients(): AwsClients {
     iam: () => once('iam', () => new IAMClient({ region: 'us-east-1' })),
     cloudfront: () => once('cloudfront', () => new CloudFrontClient({ region: 'us-east-1' })),
     kvs: () => once('kvs', () => new CloudFrontKeyValueStoreClient({ region: 'us-east-1' })),
+    ssm: (region) => once(`ssm:${region}`, () => new SSMClient({ region })),
+    cognito: (region) =>
+      once(`cognito:${region}`, () => new CognitoIdentityProviderClient({ region })),
   };
 }
 

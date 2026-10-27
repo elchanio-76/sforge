@@ -107,6 +107,36 @@ variable "ci" {
   default = null
 }
 
+variable "site_title" {
+  description = "site.title, used in the invitations of private sites."
+  type        = string
+  default     = null
+}
+
+variable "auth" {
+  description = "Require signing in on every URL (users in a Cognito user pool). Null serves a public site."
+  type = object({
+    session_hours         = optional(number, 8)
+    mfa                   = optional(string, "optional")
+    allow_cloudfront_host = optional(bool, false)
+  })
+  default = null
+  validation {
+    condition     = var.auth == null || contains(["off", "optional", "required"], try(var.auth.mfa, ""))
+    error_message = "auth.mfa must be \"off\", \"optional\" or \"required\"."
+  }
+  validation {
+    condition     = var.auth == null || (try(var.auth.session_hours, 0) >= 1 && try(var.auth.session_hours, 0) <= 24)
+    error_message = "auth.session_hours must be between 1 and 24."
+  }
+}
+
+variable "private_dns" {
+  description = "The domain resolves only in a private zone: no routing records are created (dns_private_records lists them), only certificate validation."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

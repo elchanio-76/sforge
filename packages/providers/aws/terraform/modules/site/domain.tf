@@ -63,8 +63,9 @@ resource "aws_acm_certificate_validation" "site" {
   }
 }
 
+# Not with private_dns: the domain's routing records belong to the internal DNS.
 resource "aws_route53_record" "alias" {
-  for_each = var.hosted_zone == null ? {} : {
+  for_each = var.hosted_zone == null || var.private_dns ? {} : {
     for pair in setproduct(local.aliases, ["A", "AAAA"]) : "${pair[0]} ${pair[1]}" => {
       name = pair[0]
       type = pair[1]

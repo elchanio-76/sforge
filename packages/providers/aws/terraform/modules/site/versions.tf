@@ -7,5 +7,9 @@ terraform {
       version               = ">= 6.0, < 7.0"
       configuration_aliases = [aws.us_east_1]
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = ">= 2.4, < 3.0"
+    }
   }
 }

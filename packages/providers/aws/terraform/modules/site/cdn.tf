@@ -119,6 +119,22 @@ resource "aws_cloudfront_distribution" "site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
 
+  # The sign-in Lambda of private sites (auth.tf).
+  dynamic "origin" {
+    for_each = local.auth ? [aws_lambda_function_url.auth[0].function_url] : []
+    content {
+      origin_id                = "auth"
+      domain_name              = trimsuffix(trimprefix(origin.value, "https://"), "/")
+      origin_access_control_id = aws_cloudfront_origin_access_control.auth[0].id
+      custom_origin_config {
+        http_port              = 80
+        https_port             = 443
+        origin_protocol_policy = "https-only"
+        origin_ssl_protocols   = ["TLSv1.2"]
+      }
+    }
+  }
+
   default_cache_behavior {
     target_origin_id           = "site"
     viewer_protocol_policy     = "redirect-to-https"
@@ -131,6 +147,27 @@ resource "aws_cloudfront_distribution" "site" {
     function_association {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.router.arn
+    }
+  }
+
+  dynamic "ordered_cache_behavior" {
+    for_each = local.auth ? ["/_sforge/auth/*"] : []
+    content {
+      path_pattern               = ordered_cache_behavior.value
+      target_origin_id           = "auth"
+      viewer_protocol_policy     = "redirect-to-https"
+      allowed_methods            = ["GET", "HEAD"]
+      cached_methods             = ["GET", "HEAD"]
+      compress                   = true
+      cache_policy_id            = data.aws_cloudfront_cache_policy.disabled[0].id
+      origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host[0].id
+      response_headers_policy_id = aws_cloudfront_response_headers_policy.site["default"].id
+
+      # Passes the viewer's host on to the Lambda.
+      function_association {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.router.arn
+      }
     }
   }
 

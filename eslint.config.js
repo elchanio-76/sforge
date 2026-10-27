@@ -16,7 +16,8 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ['scripts/**/*.mjs'],
+    // The sign-in Lambda of private AWS targets runs on Node.js.
+    files: ['scripts/**/*.mjs', 'packages/providers/aws/terraform/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
   {
@@ -29,7 +30,7 @@ export default tseslint.config(
     // CloudFront Functions: `handler` is the entry point, the config is substituted
     // at provision time, and the runtime may not support optional catch bindings.
     files: ['packages/providers/aws/terraform/**/*.js'],
-    languageOptions: { globals: { __SFORGE_CONFIG__: 'readonly' } },
+    languageOptions: { globals: { __SFORGE_CONFIG__: 'readonly', atob: 'readonly' } },
     rules: {
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': [

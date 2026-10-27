@@ -54,6 +54,10 @@ export const ErrorCode = {
   DeployFailed: 'SF_DEPLOY_FAILED',
   /** The target has no recorded deployment or the requested version does not exist. */
   VersionNotFound: 'SF_VERSION_NOT_FOUND',
+  /** `users invite`: the user already exists (or is already invited). */
+  UserExists: 'SF_USER_EXISTS',
+  /** `users invite`: the target has as many users as its plan allows. */
+  UserLimit: 'SF_USER_LIMIT',
   Internal: 'SF_INTERNAL',
 } as const;
 
@@ -83,6 +87,8 @@ const exitCodeFor: Record<ErrorCode, ExitCode> = {
   SF_CHECK_FAILED: ExitCode.Failure,
   SF_DEPLOY_FAILED: ExitCode.Failure,
   SF_VERSION_NOT_FOUND: ExitCode.Usage,
+  SF_USER_EXISTS: ExitCode.Usage,
+  SF_USER_LIMIT: ExitCode.Failure,
   SF_INTERNAL: ExitCode.Internal,
 };
 

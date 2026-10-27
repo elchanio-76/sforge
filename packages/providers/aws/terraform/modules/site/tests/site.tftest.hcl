@@ -26,12 +26,50 @@ mock_provider "aws" {
       arn = "arn:aws:cloudfront::123456789012:function/sforge-docs-staging-router"
     }
   }
+  mock_resource "aws_lambda_function_url" {
+    defaults = {
+      function_url = "https://abcdefghij.lambda-url.eu-central-1.on.aws/"
+    }
+  }
+  mock_resource "aws_cognito_user_pool" {
+    defaults = {
+      id       = "eu-central-1_AbCdEf123"
+      endpoint = "cognito-idp.eu-central-1.amazonaws.com/eu-central-1_AbCdEf123"
+    }
+  }
+  mock_resource "aws_iam_role" {
+    defaults = {
+      arn = "arn:aws:iam::123456789012:role/sforge-docs-staging-auth"
+    }
+  }
+  mock_resource "aws_ssm_parameter" {
+    defaults = {
+      arn = "arn:aws:ssm:eu-central-1:123456789012:parameter/sforge/docs-staging/auth/key"
+    }
+  }
+  mock_resource "aws_cloudwatch_log_group" {
+    defaults = {
+      arn = "arn:aws:logs:eu-central-1:123456789012:log-group:/aws/lambda/sforge-docs-staging-auth"
+    }
+  }
+  mock_data "aws_region" {
+    defaults = {
+      region = "eu-central-1"
+    }
+  }
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
   mock_resource "aws_iam_openid_connect_provider" {
     defaults = {
       arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
     }
   }
 }
+
+mock_provider "archive" {}
 
 mock_provider "aws" {
   alias = "us_east_1"
@@ -119,8 +157,18 @@ run "private_bucket_behind_cloudfront" {
   }
 
   assert {
-    condition     = strcontains(aws_cloudfront_function.router.code, "{\"previewSuffix\":\"\",\"trailingSlash\":\"always\"}") && !strcontains(aws_cloudfront_function.router.code, "__SFORGE_CONFIG__")
+    condition     = strcontains(aws_cloudfront_function.router.code, "{\"auth\":null,\"previewSuffix\":\"\",\"trailingSlash\":\"always\"}") && !strcontains(aws_cloudfront_function.router.code, "__SFORGE_CONFIG__")
     error_message = "The router config must be substituted."
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_function.router.code) <= 10240 && !strcontains(aws_cloudfront_function.router.code, "\n// ")
+    error_message = "Comment lines are removed and the router fits the 10 KB limit of CloudFront Functions."
+  }
+
+  assert {
+    condition     = length(aws_cognito_user_pool.site) == 0 && length(aws_lambda_function.auth) == 0 && length(aws_cloudfront_distribution.site.ordered_cache_behavior) == 0 && output.sign_in_url == null
+    error_message = "Public sites have no sign-in."
   }
 
   assert {
@@ -436,4 +484,207 @@ run "access_logs" {
     condition     = length(aws_s3_bucket.logs) == 1 && aws_s3_bucket_public_access_block.logs[0].block_public_policy
     error_message = "Logging must create a private log bucket."
   }
+}
+
+run "private_site_without_domain" {
+  command = apply
+
+  variables {
+    site_title = "Docs"
+    auth       = {}
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.site[0].admin_create_user_config[0].allow_admin_create_user_only && aws_cognito_user_pool.site[0].user_pool_tier == "ESSENTIALS"
+    error_message = "Only administrators create users (Essentials tier)."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.site[0].mfa_configuration == "OPTIONAL" && aws_cognito_user_pool.site[0].software_token_mfa_configuration[0].enabled
+    error_message = "TOTP MFA is optional by default."
+  }
+
+  assert {
+    condition     = strcontains(aws_cognito_user_pool.site[0].admin_create_user_config[0].invite_message_template[0].email_subject, "Docs")
+    error_message = "Invitations name the site."
+  }
+
+  assert {
+    condition = (
+      !aws_cognito_user_pool_client.site[0].generate_secret &&
+      aws_cognito_user_pool_client.site[0].allowed_oauth_flows == toset(["code"]) &&
+      aws_cognito_user_pool_client.site[0].callback_urls == toset(["https://d111111abcdef8.cloudfront.net/_sforge/auth/callback"])
+    )
+    error_message = "A public code-flow client calls back to the CloudFront host without a domain."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool_domain.site[0].managed_login_version == 2 && !strcontains(aws_cognito_user_pool_domain.site[0].domain, "aws")
+    error_message = "Managed login v2 on a valid prefix domain."
+  }
+
+  assert {
+    condition     = aws_lambda_function.auth[0].runtime == "nodejs24.x" && one(aws_lambda_function.auth[0].architectures) == "arm64" && aws_lambda_function.auth[0].memory_size == 128
+    error_message = "The sign-in Lambda is a small arm64 Node.js function."
+  }
+
+  assert {
+    condition     = aws_lambda_function_url.auth[0].authorization_type == "AWS_IAM" && aws_cloudfront_origin_access_control.auth[0].origin_access_control_origin_type == "lambda"
+    error_message = "The function URL is reachable only through CloudFront's origin access control."
+  }
+
+  assert {
+    condition     = aws_lambda_permission.auth_url[0].source_arn == aws_cloudfront_distribution.site.arn && aws_lambda_permission.auth_invoke[0].source_arn == aws_cloudfront_distribution.site.arn
+    error_message = "Only this distribution may invoke the Lambda."
+  }
+
+  assert {
+    condition     = [for b in aws_cloudfront_distribution.site.ordered_cache_behavior : b.path_pattern] == ["/_sforge/auth/*"] && aws_cloudfront_distribution.site.ordered_cache_behavior[0].target_origin_id == "auth"
+    error_message = "/_sforge/auth/* goes to the Lambda."
+  }
+
+  assert {
+    condition = alltrue([
+      for s in jsondecode(aws_iam_role_policy.auth[0].policy).Statement : !contains(flatten([s.Resource]), "*")
+    ])
+    error_message = "The Lambda's role reaches only its parameters and log group."
+  }
+
+  assert {
+    condition     = aws_ssm_parameter.auth_key[0].type == "SecureString" && aws_ssm_parameter.auth_key[0].value == "none" && aws_cloudfrontkeyvaluestore_key.auth[0].value == "none"
+    error_message = "The session key is only seeded; sforge writes it after the apply."
+  }
+
+  assert {
+    condition = jsondecode(aws_ssm_parameter.auth_config[0].value) == {
+      clientId      = aws_cognito_user_pool_client.site[0].id
+      cognitoDomain = "https://${aws_cognito_user_pool_domain.site[0].domain}.auth.eu-central-1.amazoncognito.com"
+      issuer        = "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_AbCdEf123"
+      hosts         = ["d111111abcdef8.cloudfront.net"]
+      previewSuffix = ""
+      sessionHours  = 8
+    }
+    error_message = "The Lambda's settings name the client, the Cognito domain, the issuer and the hosts."
+  }
+
+  assert {
+    condition     = strcontains(aws_cloudfront_function.router.code, "\"auth\":{\"canonicalHost\":\"\",\"loginHost\":\"\"}") && length(aws_cloudfront_function.router.code) <= 10240
+    error_message = "Without a domain, every host signs in itself."
+  }
+
+  assert {
+    condition     = output.sign_in_url == "https://d111111abcdef8.cloudfront.net/_sforge/auth/login" && output.auth_user_pool_id == "eu-central-1_AbCdEf123"
+    error_message = "The sign-in URL and the user pool are outputs."
+  }
+}
+
+run "private_site_on_a_private_domain" {
+  command = apply
+
+  override_resource {
+    target = aws_acm_certificate.site[0]
+    values = {
+      arn = "arn:aws:acm:us-east-1:123456789012:certificate/abc"
+      domain_validation_options = [
+        {
+          domain_name           = "intra.example.com"
+          resource_record_name  = "_a1.intra.example.com."
+          resource_record_type  = "CNAME"
+          resource_record_value = "_b1.acm-validations.aws."
+        },
+        {
+          domain_name           = "*.preview.example.com"
+          resource_record_name  = "_a2.preview.example.com."
+          resource_record_type  = "CNAME"
+          resource_record_value = "_b2.acm-validations.aws."
+        },
+      ]
+    }
+  }
+
+  override_data {
+    target = data.aws_route53_zone.site[0]
+    values = {
+      zone_id = "Z123EXAMPLE"
+    }
+  }
+
+  variables {
+    domain         = "intra.example.com"
+    hosted_zone    = "example.com"
+    preview_domain = "preview.example.com"
+    private_dns    = true
+    auth           = { mfa = "required", session_hours = 4 }
+  }
+
+  assert {
+    condition     = length(aws_route53_record.validation) == 2 && length(aws_route53_record.alias) == 0
+    error_message = "Only validation records go to the public zone."
+  }
+
+  assert {
+    condition     = length(output.dns_records) == 0 && length(output.dns_routing_records) == 0
+    error_message = "No routing records are published."
+  }
+
+  assert {
+    condition = jsonencode(output.dns_private_records) == jsonencode([
+      { name = "intra.example.com", type = "CNAME", value = "d111111abcdef8.cloudfront.net" },
+      { name = "*.preview.example.com", type = "CNAME", value = "d111111abcdef8.cloudfront.net" },
+    ])
+    error_message = "The routing records are listed for the internal DNS."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.site[0].mfa_configuration == "ON"
+    error_message = "MFA can be required."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool_client.site[0].callback_urls == toset(["https://intra.example.com/_sforge/auth/callback"])
+    error_message = "Only the domain signs in; previews hand over from it."
+  }
+
+  assert {
+    condition     = strcontains(aws_cloudfront_function.router.code, "\"auth\":{\"canonicalHost\":\"intra.example.com\",\"loginHost\":\"intra.example.com\"}")
+    error_message = "The CloudFront host redirects to the domain, where users sign in."
+  }
+
+  assert {
+    condition     = jsondecode(aws_ssm_parameter.auth_config[0].value).previewSuffix == ".preview.example.com" && jsondecode(aws_ssm_parameter.auth_config[0].value).sessionHours == 4
+    error_message = "The Lambda knows the previews and the session length."
+  }
+}
+
+run "private_site_also_on_the_cloudfront_host" {
+  command = plan
+
+  override_resource {
+    target = aws_acm_certificate.site[0]
+    values = {
+      arn                       = "arn:aws:acm:us-east-1:123456789012:certificate/abc"
+      domain_validation_options = [{ domain_name = "intra.example.com", resource_record_name = "_a1.intra.example.com.", resource_record_type = "CNAME", resource_record_value = "_b1.acm-validations.aws." }]
+    }
+  }
+
+  variables {
+    domain                  = "intra.example.com"
+    validation_record_fqdns = ["_a1.intra.example.com"]
+    auth                    = { allow_cloudfront_host = true, mfa = "off" }
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.site[0].mfa_configuration == "OFF" && length(aws_cognito_user_pool.site[0].software_token_mfa_configuration) == 0
+    error_message = "MFA can be turned off."
+  }
+}
+
+run "rejects_bad_auth_settings" {
+  command = plan
+
+  variables {
+    auth = { mfa = "sms", session_hours = 48 }
+  }
+
+  expect_failures = [var.auth]
 }

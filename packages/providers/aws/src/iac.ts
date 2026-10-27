@@ -20,6 +20,7 @@ import {
 } from '@staticforge/iac';
 import { searchPaths, securityHeaders } from '@staticforge/provider-api';
 import { type AwsClients, awsError, defaultClients, errorName, httpStatus } from './clients.js';
+import { seedSessionKey, sessionKeyLocation } from './session.js';
 
 /** Packaged HCL, next to src/ and dist/. */
 const terraformDir = (path: string) =>
@@ -29,6 +30,8 @@ export const SITE_MODULE_DIR = terraformDir('modules/site');
 export const STATE_BOOTSTRAP_DIR = terraformDir('state-bootstrap');
 
 const AWS_PROVIDER = { source: 'hashicorp/aws', version: '>= 6.0, < 7.0' };
+/** Zips the sign-in Lambda of private targets. */
+const ARCHIVE_PROVIDER = { source: 'hashicorp/archive', version: '>= 2.4, < 3.0' };
 const GITHUB_OIDC_HOST = 'token.actions.githubusercontent.com';
 
 export interface StateLocation {
@@ -194,6 +197,16 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
         domain: target.domain ?? null,
         hosted_zone: target.hostedZone ?? null,
         preview_domain: target.previewDomain ?? null,
+        private_dns: target.privateDns,
+        site_title: input.config.site.title,
+        auth:
+          target.auth === undefined
+            ? null
+            : {
+                session_hours: target.auth.sessionHours,
+                mfa: target.auth.mfa,
+                allow_cloudfront_host: target.auth.allowCloudFrontHost,
+              },
         logging: target.logging,
         waf_web_acl_arn: target.wafWebAclArn ?? null,
         force_destroy: false,
@@ -233,7 +246,7 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
         { tags: { ...tags, 'sforge:site': project, 'sforge:target': input.targetName } },
       ];
       const site: IacSpec = {
-        requiredProviders: { aws: AWS_PROVIDER },
+        requiredProviders: { aws: AWS_PROVIDER, archive: ARCHIVE_PROVIDER },
         providers: {
           aws: [
             { region: target.region, default_tags: defaultTags },
@@ -261,17 +274,29 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
           'dns_records',
           'ci_role_arn',
           'oidc_provider_arn',
+          'dns_private_records',
+          'sign_in_url',
+          'auth_user_pool_id',
+          'auth_key_parameter',
         ],
         backend: s3Backend(location, target.state.kmsKeyArn),
       };
       // Validation and routing records are separate modules: the distribution needs the
-      // validated certificate, and the routing records need the distribution.
+      // validated certificate, and the routing records need the distribution. With
+      // privateDns, the routing records are for the internal DNS only.
       const spec = dns
         ? withDns(site, dns, [
             { name: 'dns_validation', records: iacRef('module.site.dns_validation_records') },
-            { name: 'dns_routing', records: iacRef('module.site.dns_routing_records') },
+            ...(target.privateDns
+              ? []
+              : [{ name: 'dns_routing', records: iacRef('module.site.dns_routing_records') }]),
           ])
         : site;
+      if (target.privateDns && target.auth === undefined && !outputsOnly) {
+        input.logger.warn(
+          `targets.${input.targetName} has privateDns but no auth: the site stays public at its *.cloudfront.net host`,
+        );
+      }
 
       const bootstrap: IacSpec = {
         requiredProviders: { aws: AWS_PROVIDER },
@@ -297,8 +322,30 @@ export function createAwsIacProfile(clients: AwsClients = defaultClients()): Iac
           bootstrap,
         },
         preDestroyInputs: { force_destroy: true },
-        // Deploys and rollbacks switch the active version with the SDK.
-        expectedDrift: ['module.site.aws_cloudfrontkeyvaluestore_key.active'],
+        // Deploys and rollbacks switch the active version with the SDK, and sforge
+        // writes the session key of private targets.
+        expectedDrift: [
+          'module.site.aws_cloudfrontkeyvaluestore_key.active',
+          'module.site.aws_cloudfrontkeyvaluestore_key.auth[0]',
+          'module.site.aws_ssm_parameter.auth_key[0]',
+        ],
+        // The session key never enters state: it is created here, once.
+        postApply: async (outputs, logger) => {
+          const location = sessionKeyLocation(outputs, target.region);
+          if (location === undefined) return [];
+          try {
+            if (await seedSessionKey(clients, location)) {
+              logger.info('Created the session key of the sign-in');
+            }
+          } catch (error) {
+            throw awsError(error, 'Could not create the session key', ErrorCode.IacFailed);
+          }
+          return typeof outputs.sign_in_url === 'string'
+            ? [
+                `Users sign in at ${outputs.sign_in_url}; invite them with \`sforge users invite ${input.targetName} <email>\`.`,
+              ]
+            : [];
+        },
         ...(target.domain !== undefined &&
           target.hostedZone === undefined &&
           dns === undefined && {

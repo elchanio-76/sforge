@@ -25,9 +25,15 @@ resource "aws_cloudfront_function" "router" {
   comment = "staticforge URL routing and versions"
   runtime = "cloudfront-js-2.0"
   publish = true
-  code = replace(file("${path.module}/router.js"), "__SFORGE_CONFIG__", jsonencode({
+  # Lines holding only a comment are dropped: functions are limited to 10 KB.
+  code = replace(replace(file("${path.module}/router.js"), "/(?m)^[ \\t]*//.*\\n/", ""), "__SFORGE_CONFIG__", jsonencode({
     trailingSlash = var.trailing_slash
     previewSuffix = var.preview_domain == null ? "" : ".${var.preview_domain}"
+    auth = local.auth ? {
+      loginHost = var.domain == null ? "" : var.domain
+      # The *.cloudfront.net host redirects to the domain unless it may sign in too.
+      canonicalHost = local.custom_domain && !var.auth.allow_cloudfront_host ? var.domain : ""
+    } : null
   }))
   key_value_store_associations = [aws_cloudfront_key_value_store.site.arn]
 }

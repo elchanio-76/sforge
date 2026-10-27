@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -21,7 +22,8 @@ type Handler = (event: unknown) => Promise<FunctionResponse>;
 function loadRouter(config: Config, kvs: Map<string, string>): Handler {
   const source = readFileSync(join(SITE_MODULE_DIR, 'router.js'), 'utf8')
     .replace("import cf from 'cloudfront';", '')
-    .replace('__SFORGE_CONFIG__', JSON.stringify(config));
+    .replace("import crypto from 'crypto';", '')
+    .replace('__SFORGE_CONFIG__', JSON.stringify({ auth: null, ...config }));
   const cf = {
     kvs: () => ({
       async get(key: string) {
@@ -31,7 +33,7 @@ function loadRouter(config: Config, kvs: Map<string, string>): Handler {
       },
     }),
   };
-  return new Function('cf', `${source}\nreturn handler;`)(cf) as Handler;
+  return new Function('cf', 'crypto', `${source}\nreturn handler;`)(cf, crypto) as Handler;
 }
 
 function event(uri: string, host = 'www.example.com', querystring = {}) {
