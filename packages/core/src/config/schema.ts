@@ -58,6 +58,53 @@ const dnsSchema = z
     'Create the DNS records of the custom domain (certificate validation, routing). Records are DNS-only, never proxied. The API token comes from CLOUDFLARE_API_TOKEN.',
   );
 
+const privateDns = z
+  .boolean()
+  .default(false)
+  .describe(
+    "The custom domain resolves only in a private (internal) DNS zone: the public zone (dns) gets only certificate validation records, and the site's own records are printed for the internal DNS. Requires domain.",
+  );
+
+/** Sign-in on every URL of an AWS target, with users in a Cognito user pool. */
+const awsAuthSchema = z
+  .strictObject({
+    sessionHours: z
+      .int()
+      .min(1)
+      .max(24)
+      .default(8)
+      .describe('How long a sign-in lasts. A removed user keeps access until it ends.'),
+    mfa: z
+      .enum(['off', 'optional', 'required'])
+      .default('optional')
+      .describe('One-time codes from an authenticator app (TOTP).'),
+    allowCloudFrontHost: z
+      .boolean()
+      .default(false)
+      .describe(
+        'Also serve the site at its *.cloudfront.net host. By default that host redirects to the domain.',
+      ),
+  })
+  .describe(
+    'Make the target private: every URL requires signing in. Users are invited with `sforge users invite`.',
+  );
+
+/** Sign-in on every URL of an Azure target, with Static Web Apps' preconfigured providers. */
+const azureAuthSchema = z
+  .strictObject({
+    providers: z
+      .array(z.enum(['aad', 'github']))
+      .min(1)
+      .default(['aad'])
+      .refine((list) => new Set(list).size === list.length, 'must not repeat a provider')
+      .describe(
+        'Sign-in providers: "aad" (Microsoft accounts and any Entra ID tenant) and "github". The first is where visitors are sent.',
+      ),
+  })
+  .describe(
+    'Make the target private: every URL requires an invited user (role "member", at most 25 on the Free plan). Invite with `sforge users invite`.',
+  );
+
 const targetBaseUrl = z
   .url({ protocol: /^https?$/ })
   .optional()
@@ -105,6 +152,8 @@ const awsTargetSchema = z.strictObject({
     .prefault({})
     .describe('Remote state backend (S3 with native locking), created by --bootstrap-state.'),
   ci: ciSchema.optional(),
+  auth: awsAuthSchema.optional(),
+  privateDns,
 });
 
 const azureTargetSchema = z.strictObject({
@@ -156,6 +205,8 @@ const azureTargetSchema = z.strictObject({
     .prefault({})
     .describe('Remote state backend (Azure Blob Storage), created by --bootstrap-state.'),
   ci: ciSchema.optional(),
+  auth: azureAuthSchema.optional(),
+  privateDns,
 });
 
 /**
@@ -177,7 +228,15 @@ export const DEFAULT_CSP = [
   'upgrade-insecure-requests',
 ].join('; ');
 
-export const targetSchema = z.discriminatedUnion('provider', [awsTargetSchema, azureTargetSchema]);
+/** A private DNS zone only makes sense for a custom domain. */
+const privateDnsNeedsDomain = (target: { privateDns: boolean; domain?: string | undefined }) =>
+  !target.privateDns || target.domain !== undefined;
+const privateDnsIssue = { message: 'privateDns needs a domain', path: ['privateDns'] };
+
+export const targetSchema = z.discriminatedUnion('provider', [
+  awsTargetSchema.refine(privateDnsNeedsDomain, privateDnsIssue),
+  azureTargetSchema.refine(privateDnsNeedsDomain, privateDnsIssue),
+]);
 
 const collectionSchema = z.strictObject({
   dir: z.string().min(1).describe('Content directory of the collection, relative to the project.'),
@@ -354,6 +413,8 @@ export type TargetConfig = z.output<typeof targetSchema>;
 export type AwsTargetConfig = Extract<TargetConfig, { provider: 'aws' }>;
 export type AzureTargetConfig = Extract<TargetConfig, { provider: 'azure' }>;
 export type DnsConfig = z.output<typeof dnsSchema>;
+export type AwsAuthConfig = z.output<typeof awsAuthSchema>;
+export type AzureAuthConfig = z.output<typeof azureAuthSchema>;
 
 /** Identity helper giving editor completion and type checking in `staticforge.config.ts`. */
 export function defineConfig(config: SforgeConfigInput): SforgeConfigInput {

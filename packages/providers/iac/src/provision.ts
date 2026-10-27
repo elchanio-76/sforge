@@ -297,6 +297,7 @@ export async function provision(options: ProvisionOptions): Promise<ProvisionRes
     if (!options.diff) {
       const values = publicOutputs(await outputs(ws));
       cache(options, engine, values);
+      await afterApply(prepared, values, notices, options.logger);
       return { ...base, applied: false, outputs: values };
     }
     return { ...base, applied: false };
@@ -312,7 +313,18 @@ export async function provision(options: ProvisionOptions): Promise<ProvisionRes
   await refreshState(ws);
   const values = publicOutputs(await outputs(ws));
   cache(options, engine, values);
+  await afterApply(prepared, values, notices, options.logger);
   return { ...base, applied: true, apply: applied, outputs: values };
+}
+
+async function afterApply(
+  prepared: PreparedTarget,
+  values: Record<string, unknown>,
+  notices: string[],
+  logger: Logger,
+): Promise<void> {
+  const added = await prepared.postApply?.(values, logger);
+  if (added) notices.push(...added);
 }
 
 function cache(options: IacRunOptions, engine: Engine, values: Record<string, unknown>): void {

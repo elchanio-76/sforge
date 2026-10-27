@@ -101,6 +101,69 @@ describe('validateConfig', () => {
   });
 });
 
+describe('private targets', () => {
+  it('applies auth defaults per provider', () => {
+    const config = validateConfig({
+      ...minimalConfig,
+      targets: {
+        staging: { provider: 'aws', region: 'eu-central-1', auth: {} },
+        prod: { provider: 'azure', resourceGroup: 'rg', location: 'westeurope', auth: {} },
+      },
+    });
+    expect(config.targets.staging).toMatchObject({
+      auth: { sessionHours: 8, mfa: 'optional', allowCloudFrontHost: false },
+      privateDns: false,
+    });
+    expect(config.targets.prod).toMatchObject({ auth: { providers: ['aad'] }, privateDns: false });
+  });
+
+  it("rejects the other provider's auth keys and repeated providers", () => {
+    for (const auth of [{ sessionHours: 4 }, { providers: ['aad', 'aad'] }, { providers: [] }]) {
+      expectSforgeError(
+        () =>
+          validateConfig({
+            ...minimalConfig,
+            targets: { x: { provider: 'azure', resourceGroup: 'rg', location: 'eastus2', auth } },
+          }),
+        ErrorCode.ConfigInvalid,
+      );
+    }
+    expectSforgeError(
+      () =>
+        validateConfig({
+          ...minimalConfig,
+          targets: { x: { provider: 'aws', region: 'eu-central-1', auth: { sessionHours: 48 } } },
+        }),
+      ErrorCode.ConfigInvalid,
+    );
+  });
+
+  it('requires a domain for privateDns', () => {
+    const error = expectSforgeError(
+      () =>
+        validateConfig({
+          ...minimalConfig,
+          targets: { x: { provider: 'aws', region: 'eu-central-1', privateDns: true } },
+        }),
+      ErrorCode.ConfigInvalid,
+    );
+    expect(JSON.stringify(error.details)).toContain('targets.x.privateDns');
+    expect(
+      validateConfig({
+        ...minimalConfig,
+        targets: {
+          x: {
+            provider: 'aws',
+            region: 'eu-central-1',
+            domain: 'intra.example.com',
+            privateDns: true,
+          },
+        },
+      }).targets.x?.privateDns,
+    ).toBe(true);
+  });
+});
+
 describe('findConfigFile', () => {
   it('searches parent directories', () => {
     const root = tempProject({

@@ -534,6 +534,40 @@
                   "repo"
                 ],
                 "additionalProperties": false
+              },
+              "auth": {
+                "type": "object",
+                "properties": {
+                  "sessionHours": {
+                    "default": 8,
+                    "description": "How long a sign-in lasts. A removed user keeps access until it ends.",
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 24
+                  },
+                  "mfa": {
+                    "default": "optional",
+                    "description": "One-time codes from an authenticator app (TOTP).",
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "optional",
+                      "required"
+                    ]
+                  },
+                  "allowCloudFrontHost": {
+                    "default": false,
+                    "description": "Also serve the site at its *.cloudfront.net host. By default that host redirects to the domain.",
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false,
+                "description": "Make the target private: every URL requires signing in. Users are invited with `sforge users invite`."
+              },
+              "privateDns": {
+                "default": false,
+                "description": "The custom domain resolves only in a private (internal) DNS zone: the public zone (dns) gets only certificate validation records, and the site's own records are printed for the internal DNS. Requires domain.",
+                "type": "boolean"
               }
             },
             "required": [
@@ -693,6 +727,33 @@
                   "repo"
                 ],
                 "additionalProperties": false
+              },
+              "auth": {
+                "type": "object",
+                "properties": {
+                  "providers": {
+                    "default": [
+                      "aad"
+                    ],
+                    "description": "Sign-in providers: \"aad\" (Microsoft accounts and any Entra ID tenant) and \"github\". The first is where visitors are sent.",
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "aad",
+                        "github"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "description": "Make the target private: every URL requires an invited user (role \"member\", at most 25 on the Free plan). Invite with `sforge users invite`."
+              },
+              "privateDns": {
+                "default": false,
+                "description": "The custom domain resolves only in a private (internal) DNS zone: the public zone (dns) gets only certificate validation records, and the site's own records are printed for the internal DNS. Requires domain.",
+                "type": "boolean"
               }
             },
             "required": [

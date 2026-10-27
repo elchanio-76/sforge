@@ -96,6 +96,49 @@ export interface DeployerContext {
   loadConfig?(dir: string): Promise<LoadedConfig>;
 }
 
+/** A user allowed to sign in to a private target. */
+export interface SiteUser {
+  /** Stable id: the Cognito `sub`, or the Static Web Apps user id. */
+  id: string;
+  /** Email address, or the GitHub user name. */
+  name: string;
+  /** Sign-in provider (Azure: "aad", "github"). */
+  provider?: string;
+  /** Account state, e.g. Cognito's FORCE_CHANGE_PASSWORD or CONFIRMED. */
+  status?: string;
+  enabled?: boolean;
+  createdAt?: string;
+}
+
+export interface InviteOptions {
+  /** Email address, or the GitHub user name. */
+  user: string;
+  /** Sign-in provider (Azure); defaults to the target's first. */
+  provider?: string;
+  /** Hours an invitation link stays valid (Azure, 1–168). */
+  expiresHours?: number;
+}
+
+export interface InviteResult {
+  user: string;
+  provider?: string;
+  /** True when the cloud emails the invitation (Cognito); false when the link must be passed on. */
+  emailed: boolean;
+  /** The invitation link (Azure). */
+  invitationUrl?: string;
+  expiresAt?: string;
+}
+
+/** Users of a private target (`targets.<n>.auth`), managed with the admin's sign-in. */
+export interface UserAdmin {
+  list(): Promise<SiteUser[]>;
+  invite(options: InviteOptions): Promise<InviteResult>;
+  /** False when there was no such user. */
+  remove(user: string, provider?: string): Promise<boolean>;
+  /** Sign every user out by replacing the session key (AWS). */
+  revokeSessions?(): Promise<void>;
+}
+
 /** What a cloud provider plugs into sforge. */
 export interface Provider {
   id: TargetConfig['provider'];
@@ -103,4 +146,6 @@ export interface Provider {
   createDeployer(context: DeployerContext): Deployer;
   /** Outputs a deployer needs; deploys fail early when one is missing. */
   requiredOutputs: string[];
+  /** Users of private targets; undefined when the provider has none. */
+  createUserAdmin?(context: DeployerContext): UserAdmin;
 }

@@ -19,7 +19,7 @@ variable "records" {
   default = {}
 
   validation {
-    condition     = alltrue([for record in values(var.records) : record.type == "CNAME"])
-    error_message = "Only CNAME records are supported."
+    condition     = alltrue([for record in values(var.records) : contains(["CNAME", "TXT"], record.type)])
+    error_message = "Only CNAME and TXT records are supported."
   }
 }

@@ -52,7 +52,22 @@ run "fqdns_output" {
   }
 }
 
-run "only_cname_records" {
+run "quoted_txt_records" {
+  command = plan
+
+  variables {
+    records = {
+      "docs.example.com" = { name = "_dnsauth.docs.example.com", type = "TXT", value = "abc123" }
+    }
+  }
+
+  assert {
+    condition     = cloudflare_dns_record.this["docs.example.com"].content == "\"abc123\""
+    error_message = "TXT content is quoted."
+  }
+}
+
+run "only_cname_and_txt_records" {
   command = plan
 
   variables {

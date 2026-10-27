@@ -14,11 +14,14 @@ export interface BuildManifest {
   files: Record<string, ManifestEntry>;
 }
 
-/** Cache-Control for a manifest cache class (the same on every provider). */
-export function cacheControl(cache: ManifestEntry['cache']): string {
-  return cache === 'immutable'
-    ? 'public, max-age=31536000, immutable'
-    : 'public, max-age=0, must-revalidate';
+/**
+ * Cache-Control for a manifest cache class (the same on every provider).
+ * Pages of a private site are `private`, so no shared cache keeps them;
+ * fingerprinted assets stay public (they are behind sign-in all the same).
+ */
+export function cacheControl(cache: ManifestEntry['cache'], privateSite = false): string {
+  if (cache === 'immutable') return 'public, max-age=31536000, immutable';
+  return `${privateSite ? 'private' : 'public'}, max-age=0, must-revalidate`;
 }
 
 /** Read `<buildDir>/.sforge/build-manifest.json`. */

@@ -620,6 +620,45 @@ describe('provision', () => {
     });
   });
 
+  it('runs postApply after an apply and after a plan without changes, never for --diff', async () => {
+    const { rootDir, config } = project();
+    const seen: unknown[] = [];
+    const base = profile();
+    const seeding: IacProfile = {
+      provider: 'aws',
+      async prepare(input) {
+        return {
+          ...(await base.prepare(input)),
+          postApply: async (outputs) => {
+            seen.push(outputs.bucket);
+            return ['Seeded the session key'];
+          },
+        };
+      },
+    };
+    const fake = fakeEngine({
+      plan: planCreates('a.b'),
+      apply: applyCreates('a.b'),
+      output: outputsStep,
+    });
+    const run = (diff = false) =>
+      provision({
+        rootDir,
+        config,
+        targetName: 'staging',
+        profile: seeding,
+        logger,
+        engine: fake.engine,
+        env: {},
+        diff,
+      });
+    expect((await run()).notices).toEqual(['Seeded the session key']);
+    await run(true);
+    fake.script({ plan: planCreates(), output: outputsStep });
+    expect((await run()).notices).toEqual(['Seeded the session key']);
+    expect(seen).toEqual(['site-bucket', 'site-bucket']);
+  });
+
   it('refuses to run without a state backend unless asked to create one', async () => {
     const { rootDir, config } = project();
     const fake = fakeEngine();

@@ -113,6 +113,12 @@ export interface PreparedTarget {
     describe(outputs: Record<string, unknown>): string | undefined;
     wait?(outputs: Record<string, unknown>, logger: Logger): Promise<void>;
   };
+  /**
+   * Run after every provision that leaves the infrastructure up to date (an
+   * apply, or a plan without changes), e.g. to seed a secret that must not
+   * enter state. Must be idempotent. Returns notices for the user.
+   */
+  postApply?(outputs: Record<string, unknown>, logger: Logger): Promise<string[] | void>;
 }
 
 export interface DnsProfileInput {
