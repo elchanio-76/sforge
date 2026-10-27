@@ -321,7 +321,7 @@ User documentation: `docs/content/ci.md`. `sforge ci init [--targets a,b] [--pac
     8. Docs: README (install, development commands), `docs/content/content.md` (wide tables, large sites), `themes.md` (scrollable content in the accessibility contract, `build.time` under dev), `deploy.md` (live tests), `RELEASING.md`.
 
 11. **M9 Custom domains + GitHub Actions deploys** ✅ (released as 0.2.0 on 2026-10-25; plan approved the same day, details in §17): Cloudflare-managed DNS records through a new `dns` target option (`@staticforge/cloudflare`), custom domains `aws.sforge.elchanio-76.eu` (previews on `pr-N.preview.aws.sforge.elchanio-76.eu`) and `azure.sforge.elchanio-76.eu`, the Azure `ci-oidc` identity, per-target base URLs, `sforge ci init`, opt-in domain live tests, and the GitHub flow verified in the test repository `elchanio-76/sforge-ci-test` against `0.2.0-rc.2` (dist-tag `next`; immutable OIDC subjects, previews marked noindex and three CI fixes found there). The test repository's resources were destroyed after the user checked both sites.
-12. **M10 Private sites** (planned 2026-10-26, details in §18; release 0.3.0): `targets.<n>.auth` makes a target require sign-in on every URL (AWS: Cognito user pool, session cookie checked by the router function, a regional Lambda for sign-in; Azure Free: preconfigured providers and invited users in the `member` role), `sforge users list|invite|remove|revoke-sessions`, and `privateDns` (validation records public, the site's records printed for internal DNS).
+12. **M10 Private sites** (planned 2026-10-26, details in §18; release 0.3.0; **code complete 2026-10-27**, live runs and the release pending): `targets.<n>.auth` makes a target require sign-in on every URL (AWS: Cognito user pool, session cookie checked by the router function, a regional Lambda for sign-in; Azure Free: preconfigured providers and invited users in the `member` role), `sforge users list|invite|remove|revoke-sessions`, and `privateDns` (validation records public, the site's records printed for internal DNS).
 13. **M11 Firebase Hosting** (planned 2026-10-26, details in §19; release 0.4.0): a third provider, `@staticforge/firebase` (package 16), public sites only: Blaze plan within the free quotas in an existing project, GCS state, Hosting REST API deployer with native preview channels and release-based rollback, Workload Identity Federation for CI, custom domains through Cloudflare.
 
 ## 16. Verification (end to end)
@@ -516,6 +516,7 @@ Decisions (made with the user, 2026-10-26):
 - **Verification:** AWS live tests sign in headlessly as a throwaway Cognito user; Azure sign-in (a real Microsoft or GitHub account with MFA) is checked by the user once.
 
 ### A. Config (`packages/core/src/config/schema.ts`)
+**Done (2026-10-27).** As built: `allowCloudFrontHost` is a boolean (default false; true also serves and signs in on the `*.cloudfront.net` host). `privateDns` without `domain` is refused by the schema itself (a refinement on each target schema, so `config validate` catches it). New error codes `SF_USER_EXISTS` (exit 2) and `SF_USER_LIMIT` (exit 1).
 - `targets.<n>.auth`: its presence makes the target private. Per provider:
   - **AWS:** `{ sessionHours?: 1–24 (default 8), mfa?: 'off'|'optional'|'required' (TOTP, default 'optional'), allowCloudFrontHost?: false }`.
   - **Azure:** `{ providers?: ('aad'|'github')[] (default ['aad']) }`. The role is always `member`.
@@ -524,6 +525,17 @@ Decisions (made with the user, 2026-10-26):
 - `pnpm schema:generate`.
 
 ### B. AWS (`packages/providers/aws`)
+**Done (2026-10-27), not yet run live.** As built, where it differs from the outline below:
+- **The Lambda reads the cookie key from SSM, not the KVS.** KVS reads need SigV4A, and the SDK in the Lambda runtime may not ship the `signature-v4a` signer. The key lives in two places: KVS `auth:key` (router) and the SecureString `/sforge/<site>-<target>/auth/key` (Lambda, the `aws/ssm` key, which needs no IAM KMS grant). Both are seeded `none` with `ignore_changes`; `postApply` (and `revoke-sessions`) writes SSM first, then the KVS. No `auth:kid`: a new key invalidates every cookie anyway. Both seeded resources are in `expectedDrift`. Note in the docs: the CI role can read the KVS, so it can read the key.
+- **Dependency cycle broken with a settings parameter.** The client's callback URLs need the distribution (without a domain), which needs the function URL, so the Lambda gets its settings (client id, Cognito domain, issuer, hosts, preview suffix, session hours) from a String parameter `/sforge/…/auth/config` named by convention in its environment, not by reference.
+- **The router passes the viewer's host to the Lambda** in `x-sforge-host` (the auth behavior uses `Managed-AllViewerExceptHostHeader`, since a function URL must see its own Host). The router is associated with the auth behavior too and returns early there.
+- **Cookie format:** `base64url(JSON).hex(HMAC-SHA256)`, claims `{ sub, email, exp, host }`. The router decodes with `atob` (documented global in cloudfront-js-2.0; whether `Buffer` is global was unclear), so the Lambda writes ASCII-only JSON (`\uXXXX` escapes). The **handoff token is a cookie value with an extra `hx` deadline** (60 s): the router checks it on `/_sforge/session` and sets it unchanged as the preview host's cookie, so the router never signs anything. `r` (the return path) must start with `/` and not `//` or `/\`. No computed property names or optional catch bindings in the router (runtime 2.0).
+- Comment-only lines are stripped from `router.js` when provisioned (`replace` with a multiline regex in `router.tf`): 6.8 KB with the auth code. A unit test checks the 10 KB limit with a worst-case config, `tofu test` checks the provisioned code.
+- Cognito: domain prefix `sforge-<16 hex of sha256(bucket name)>` (prefixes may not contain "aws"); invitation subject and text name `site.title` (new module input `site_title`); `deletion_protection = INACTIVE` so `destroy` works; tokens 60 minutes, refresh 1 day. `aws_cognito_managed_login_branding` with Cognito's defaults. Lambda: Node 24 arm64 128 MB, its own log group (30 days), two permissions for CloudFront (`InvokeFunctionUrl` with `AWS_IAM`, and `InvokeFunction`). The zip is written to the workspace (`archive` provider, added to the spec's required providers).
+- `logout` returns to `https://<home>/`, which sends the visitor to sign in again; logout on a preview host clears its cookie and continues on the domain.
+- New outputs: `sign_in_url`, `auth_user_pool_id`, `auth_key_parameter`, `dns_private_records`; with `private_dns`, `dns_records` and `dns_routing_records` are empty and Route 53 aliases are skipped.
+- Users: `remove` looks the user up with a `ListUsers` filter on `email` (the pool's user names are generated), then `AdminUserGlobalSignOut` + `AdminDeleteUser`.
+- Found on the way: `terraform test` (Terraform 1.16.1) fails the existing run `custom_domain_with_route53_and_previews` with "Attempt to get attribute from null value" in `dns_validation_records`, also on the commit before M10; OpenTofu passes all 12 runs. Not fixed in M10.
 No Lambda@Edge, and every part fits a free tier: the existing **router CloudFront Function** checks a signed session cookie on every request, and a small **regional Lambda** runs only during sign-in.
 - **HCL `modules/site/auth.tf`** (count on `var.auth != null`):
   - `aws_cognito_user_pool` (Essentials tier, admin-create-only, email as username, invitation template naming the site, TOTP MFA per `mfa`, password policy), `aws_cognito_user_pool_domain` (prefix domain, managed login v2), `aws_cognito_managed_login_branding` (default style), `aws_cognito_user_pool_client` (public client with PKCE and no secret, code flow, scopes `openid email`, callback and logout URLs on `https://<domain>/_sforge/auth/…`, or the `cloudfront.net` host without a domain).
@@ -542,12 +554,14 @@ No Lambda@Edge, and every part fits a free tier: the existing **router CloudFron
 - The CI role is unchanged: deploys never touch Cognito.
 
 ### C. Azure (`packages/providers/azure`)
+**Done (2026-10-27), not yet run live.** As built: the catch-all `/*` route comes **last**, after the header and cache routes (each with `allowedRoles: ['member']`); first come the blocked providers and the denied page (`authenticated`). Global `Cache-Control` is `private` for private targets. A project's own `static/staticwebapp.config.json` is refused on a private target (`SF_CONFIG_INVALID`) instead of being used as is. Users are removed with `deleteStaticSiteUser`; `invite` checks existing members (`SF_USER_EXISTS`) and the Free plan's 25 (`SF_USER_LIMIT`), and invites on the custom domain when there is one. The custom domain's `validation_token` is marked sensitive by azurerm, so the module exposes it with `nonsensitive()` (it is published in DNS). With `privateDns` and `dns`, the pre-phase applies the app, the domain and `module.dns_validation` (the TXT record needs the token), then waits for the TXT on the zone's nameservers. Whether azurerm returns from creating a `dns-txt-token` domain before validation completes is assumed, to be confirmed live. New outputs `validation_records`, `dns_validation_records`, `dns_private_records`, `sign_in_url` (module input `auth_provider`).
 - **`swa-config.ts`** with `auth`: auth routes first, counted in the 20 KB budget: blocked providers → `statusCode: 404`; `/_sforge/denied.html` → `allowedRoles: ['authenticated']`; `/*` → `allowedRoles: ['member']`. **Every generated route (search CSP, immutable cache) also carries `allowedRoles: ['member']`**: SWA applies only the first matching route, so a header route without roles would bypass auth. `responseOverrides`: 401 → 302 to `/.auth/login/<first provider>?post_login_redirect_uri=.referrer`; 403 → rewrite to `/_sforge/denied.html`, a small accessible page with sign-out that the deployer adds.
 - **Users:** invite with `createUserRolesInvitationLink` (role `member`, provider, email for `aad` or username for GitHub, `--expires` 1–168 hours, default 168; SWA sends no email, so sforge prints the link), list with `listStaticSiteUsers` filtered to `member`, remove with `updateStaticSiteUser` (empty role) or `deleteStaticSiteUser`. The 25-user limit is checked before inviting.
 - **`privateDns`:** the custom domain uses `validation_type = "dns-txt-token"`; the `_dnsauth.<label>` TXT record goes public (Cloudflare) or is printed; the pre-phase waits for the TXT record instead of the CNAME (`waitForCname` generalized to `waitForRecord`); the CNAME goes to `dns_private_records`.
 - The `ci-oidc` custom role is unchanged.
 
 ### D. Shared plumbing
+**Done (2026-10-27).** As built: `postApply(outputs, logger)` runs after every provision that leaves the infrastructure current (an apply, or a plan without changes), not only after an apply, so a failed seeding is retried; it returns notices. `Provider.createUserAdmin?(context)` returns the `UserAdmin` (it needs the outputs). `users revoke-sessions` is CLI-only (not an MCP tool). The Cloudflare module quotes TXT content.
 - IaC layer: `PreparedTarget.postApply(outputs)`, run after a successful apply.
 - Cloudflare `records` module: TXT records (also needed in M11).
 - `provider-api`: optional `Provider.users?: UserAdmin { list, invite, remove, revokeSessions? }`.
@@ -556,6 +570,7 @@ No Lambda@Edge, and every part fits a free tier: the existing **router CloudFron
 - `ci init`: unchanged; previews of private AWS targets work through the handoff.
 
 ### E. Tests, live verification, docs, release
+**Code and docs done (2026-10-27); live runs and the release pending.** Unit tests: router + Lambda end to end (`packages/providers/aws/test/auth.test.ts`: the Lambda's cookie and handoff are verified by the router code, ID tokens signed with a generated RSA key), session key and users (`aws-sdk-client-mock`), Azure config/users/profile (`private.test.ts`), the TXT wait, CLI and MCP (envelopes validated against the schemas). `tofu test`: 12 runs (AWS), 10 (Azure), 4 (Cloudflare). `pnpm test:iac` and `pnpm test:pack` pass (the pack test also checks that `router.js` and `auth-lambda/index.mjs` ship). The live test is `packages/cli/test/live-auth.integration.test.ts` (helpers shared in `live-helpers.ts`): `SFORGE_LIVE_AUTH=1`, optional `SFORGE_LIVE_PRIVATE_DNS=1` (Chromium gets `--host-resolver-rules`, Node requests a custom `lookup`), `SFORGE_LIVE_KEEP=1` for Azure's manual check.
 - Unit: the router with auth (valid, expired, wrong-host and forged cookies, handoff, redirect, the 404 path), the Lambda handlers (mocked token endpoint and JWKS), the SWA config (every route has `allowedRoles`, the budget holds), the users APIs (`aws-sdk-client-mock`, fake Azure clients), schema rules.
 - `tofu test`: auth resources, `privateDns` without routing records, Azure TXT validation; `pnpm test:iac`.
 - Live (`SFORGE_LIVE_AUTH=1`, asked before every run):
@@ -565,11 +580,11 @@ No Lambda@Edge, and every part fits a free tier: the existing **router CloudFron
 - Release 0.3.0: rc on `next`, checked in `sforge-ci-test`, then final.
 
 ### Order of work
-1. Config and schema (A), IaC `postApply` and TXT records (D).
-2. AWS (B): HCL, router, Lambda, users; unit and `tofu test`.
-3. Azure (C): SWA config, users, TXT validation.
-4. CLI `users` command, MCP tools, docs.
-5. Live tests (ask first): AWS, then Azure with the user's manual sign-in check.
+1. Config and schema (A), IaC `postApply` and TXT records (D). Done 2026-10-27.
+2. AWS (B): HCL, router, Lambda, users; unit and `tofu test`. Done 2026-10-27.
+3. Azure (C): SWA config, users, TXT validation. Done 2026-10-27.
+4. CLI `users` command, MCP tools, docs. Done 2026-10-27.
+5. Live tests (ask first): AWS, then Azure with the user's manual sign-in check. Test written; not run yet.
 6. rc release, test repository, 0.3.0.
 
 ## 19. M11 plan: Firebase Hosting (`@staticforge/firebase`, package 16)
