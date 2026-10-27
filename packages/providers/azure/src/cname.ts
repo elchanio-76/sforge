@@ -1,12 +1,20 @@
 import { Resolver } from 'node:dns/promises';
 import { ErrorCode, type Logger, SforgeError } from '@staticforge/core';
 
-/** DNS lookups for `waitForCname`, injectable for tests. */
+/** DNS lookups for `waitForRecord`, injectable for tests. */
 export interface CnameLookup {
   /** Host names of the nameservers of the zone that holds `name`. */
   nameservers(name: string): Promise<string[]>;
   /** The CNAME target of `name` according to `nameserver`; undefined while it has none. */
   cname(name: string, nameserver: string): Promise<string | undefined>;
+  /** The TXT values of `name` according to `nameserver`; empty while it has none. */
+  txt?(name: string, nameserver: string): Promise<string[]>;
+}
+
+/** A record `waitForRecord` waits for. */
+export interface ExpectedRecord {
+  type: 'CNAME' | 'TXT';
+  value: string;
 }
 
 const NO_ANSWER = new Set(['ENODATA', 'ENOTFOUND', 'NXDOMAIN']);
@@ -43,6 +51,17 @@ export function systemCnameLookup(): CnameLookup {
         throw error;
       }
     },
+    async txt(name, nameserver) {
+      const direct = new Resolver();
+      direct.setServers(await resolver.resolve4(nameserver));
+      try {
+        // Long TXT values arrive in chunks of up to 255 characters.
+        return (await direct.resolveTxt(name)).map((chunks) => chunks.join(''));
+      } catch (error) {
+        if (isNoAnswer(error)) return [];
+        throw error;
+      }
+    },
   };
 }
 
@@ -60,9 +79,23 @@ const HOUR = 60 * 60_000;
  * `target`. Azure checks the CNAME when a custom domain is added and refuses
  * it (`CNAME Record is invalid`) if it does not resolve yet.
  */
-export async function waitForCname(
+export function waitForCname(
   name: string,
   target: string,
+  logger: Logger,
+  options: WaitForCnameOptions = {},
+): Promise<void> {
+  return waitForRecord(name, { type: 'CNAME', value: target }, logger, options);
+}
+
+/**
+ * Resolve once every nameserver of the zone that holds `name` answers with the
+ * record: a CNAME to the value, or a TXT record with the value among others
+ * (domain validation tokens).
+ */
+export async function waitForRecord(
+  name: string,
+  record: ExpectedRecord,
   logger: Logger,
   options: WaitForCnameOptions = {},
 ): Promise<void> {
@@ -70,38 +103,50 @@ export async function waitForCname(
   const interval = options.intervalMs ?? 10_000;
   const sleep = options.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const deadline = Date.now() + (options.timeoutMs ?? HOUR);
-  const wanted = normalize(target);
+  const cname = record.type === 'CNAME';
+  const wanted = cname ? normalize(record.value) : record.value;
+  // "is a CNAME to …", "has the TXT value …"
+  const state = cname ? `is a CNAME to ${record.value}` : `has the TXT value ${record.value}`;
   let announced = false;
   let wrong: string | undefined;
   for (;;) {
     try {
       const servers = await lookup.nameservers(name);
-      const answers = await Promise.all(servers.map((s) => lookup.cname(name, s)));
-      const found = answers.map((a) => (a === undefined ? undefined : normalize(a)));
-      if (servers.length > 0 && found.every((a) => a === wanted)) {
-        if (announced) logger.info(`${name} resolves to ${target}`);
-        return;
+      let found: boolean[];
+      if (cname) {
+        const answers = await Promise.all(servers.map((s) => lookup.cname(name, s)));
+        const targets = answers.map((a) => (a === undefined ? undefined : normalize(a)));
+        found = targets.map((a) => a === wanted);
+        const other = targets.find((a) => a !== undefined && a !== wanted);
+        if (other !== undefined && other !== wrong) {
+          wrong = other;
+          logger.warn(`${name} is a CNAME to ${other}; it must point to ${record.value}`);
+        }
+      } else {
+        if (lookup.txt === undefined) throw new Error('TXT lookups are not supported');
+        const answers = await Promise.all(servers.map((s) => lookup.txt!(name, s)));
+        found = answers.map((values) => values.includes(wanted));
       }
-      const other = found.find((a) => a !== undefined && a !== wanted);
-      if (other !== undefined && other !== wrong) {
-        wrong = other;
-        logger.warn(`${name} is a CNAME to ${other}; it must point to ${target}`);
+      if (servers.length > 0 && found.every(Boolean)) {
+        if (announced) {
+          logger.info(cname ? `${name} resolves to ${record.value}` : `${name} ${state}`);
+        }
+        return;
       }
       if (!announced) {
         announced = true;
-        logger.info(`Waiting until ${name} is a CNAME to ${target} (${servers.join(', ')})`);
+        logger.info(`Waiting until ${name} ${state} (${servers.join(', ')})`);
       }
     } catch (error) {
       logger.debug(`DNS lookup for ${name} failed: ${(error as Error).message}`);
     }
     if (Date.now() >= deadline) {
-      throw new SforgeError(
-        ErrorCode.IacFailed,
-        `${name} did not become a CNAME to ${target} in time`,
-        {
-          hint: 'Check the record at your DNS provider, then run `sforge provision` again.',
-        },
-      );
+      const missing = cname
+        ? `become a CNAME to ${record.value}`
+        : `get the TXT value ${record.value}`;
+      throw new SforgeError(ErrorCode.IacFailed, `${name} did not ${missing} in time`, {
+        hint: 'Check the record at your DNS provider, then run `sforge provision` again.',
+      });
     }
     await sleep(interval);
   }

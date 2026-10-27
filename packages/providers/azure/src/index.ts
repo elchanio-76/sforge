@@ -2,6 +2,7 @@ import type { Provider } from '@staticforge/provider-api';
 import { type AzureClients, defaultClients } from './clients.js';
 import { REQUIRED_OUTPUTS, createAzureDeployer } from './deployer.js';
 import { createAzureIacProfile } from './iac.js';
+import { createAzureUserAdmin } from './users.js';
 
 export * from './clients.js';
 export * from './cname.js';
@@ -11,6 +12,7 @@ export * from './iac.js';
 export * from './rebuild.js';
 export * from './swa-config.js';
 export * from './uploader.js';
+export * from './users.js';
 
 /** The Azure provider: Static Web Apps, named preview environments, rollback by rebuild. */
 export function createAzureProvider(clients: AzureClients = defaultClients()): Provider {
@@ -19,5 +21,6 @@ export function createAzureProvider(clients: AzureClients = defaultClients()): P
     iac: createAzureIacProfile(clients),
     createDeployer: (context) => createAzureDeployer(context, clients),
     requiredOutputs: REQUIRED_OUTPUTS,
+    createUserAdmin: (context) => createAzureUserAdmin(context, clients),
   };
 }

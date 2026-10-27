@@ -39,7 +39,9 @@ resource "azurerm_static_web_app" "site" {
 
 # Optional custom domain. cname-delegation validation needs the CNAME to the
 # app's default host to exist first; the provider then polls until Azure has
-# validated it and issued the free managed certificate.
+# validated it and issued the free managed certificate. With private_dns the
+# CNAME exists only in an internal zone Azure cannot see, so the domain is
+# validated with a TXT token (_dnsauth.<domain>) in the public zone instead.
 
 resource "terraform_data" "dns_ready" {
   count = var.domain == null ? 0 : 1
@@ -51,7 +53,7 @@ resource "azurerm_static_web_app_custom_domain" "site" {
 
   static_web_app_id = azurerm_static_web_app.site.id
   domain_name       = var.domain
-  validation_type   = "cname-delegation"
+  validation_type   = var.private_dns ? "dns-txt-token" : "cname-delegation"
 
   timeouts {
     create = "1h"

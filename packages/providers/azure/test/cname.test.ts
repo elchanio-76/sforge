@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ErrorCode } from '@staticforge/core';
-import { type CnameLookup, waitForCname } from '../src/index.js';
+import { type CnameLookup, waitForCname, waitForRecord } from '../src/index.js';
 
 function recordingLogger() {
   const lines: string[] = [];
@@ -103,5 +103,31 @@ describe('waitForCname', () => {
     expect(lines.some((l) => l.startsWith('debug DNS lookup for www.example.com failed'))).toBe(
       true,
     );
+  });
+});
+
+describe('waitForRecord', () => {
+  it('waits for a TXT value on every nameserver, among other values', async () => {
+    let round = 0;
+    const lookup: CnameLookup = {
+      nameservers: async () => ['ns1.example.net', 'ns2.example.net'],
+      cname: async () => undefined,
+      txt: async (name, nameserver) => {
+        expect(name).toBe('_dnsauth.intra.example.com');
+        return round === 0 && nameserver === 'ns2.example.net' ? [] : ['v=spf1 -all', 'tok3n'];
+      },
+    };
+    const { logger, lines } = recordingLogger();
+    await waitForRecord('_dnsauth.intra.example.com', { type: 'TXT', value: 'tok3n' }, logger, {
+      lookup,
+      sleep: async () => {
+        round++;
+      },
+    });
+    expect(round).toBe(1);
+    expect(lines).toEqual([
+      'info Waiting until _dnsauth.intra.example.com has the TXT value tok3n (ns1.example.net, ns2.example.net)',
+      'info _dnsauth.intra.example.com has the TXT value tok3n',
+    ]);
   });
 });

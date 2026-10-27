@@ -13,7 +13,7 @@ import {
   projectName,
   withDns,
 } from '@staticforge/iac';
-import { type CnameLookup, waitForCname } from './cname.js';
+import { type CnameLookup, waitForCname, waitForRecord } from './cname.js';
 import { type AzureClients, azureError, defaultClients, httpStatus } from './clients.js';
 
 /** Packaged HCL, next to src/ and dist/. */
@@ -258,6 +258,17 @@ export function describeCname(outputs: Record<string, unknown>): string | undefi
   ].join('\n');
 }
 
+/** Instructions for a private domain: the TXT record to publish, the CNAME for internal DNS. */
+export function describePrivateDomain(outputs: Record<string, unknown>): string | undefined {
+  const txt = outputs.validation_records as
+    { name: string; type: string; value: string }[] | undefined;
+  if (txt === undefined || txt.length === 0) return undefined;
+  return [
+    'Create this DNS record in the public zone to validate the domain (provisioning waits until it resolves):',
+    ...txt.map((r) => `  ${r.name} ${r.type} "${r.value}"`),
+  ].join('\n');
+}
+
 export interface AzureIacOptions {
   /** DNS lookups for the custom domain's CNAME (tests). */
   cname?: CnameLookup;
@@ -306,8 +317,10 @@ export function createAzureIacProfile(
             location: target.location,
             sku: target.sku,
             domain: target.domain ?? null,
+            private_dns: target.privateDns,
+            auth_provider: target.auth?.providers[0] ?? null,
             // The custom domain waits for the CNAME the DNS module creates.
-            ...(dns && { dns_ready: iacRef('module.dns_routing.ids') }),
+            ...(dns && !target.privateDns && { dns_ready: iacRef('module.dns_routing.ids') }),
             tags: { ...tags, 'sforge:site': project, 'sforge:target': name },
           },
         },
@@ -321,14 +334,25 @@ export function createAzureIacProfile(
           'url',
           'domain',
           'dns_records',
+          'validation_records',
+          'dns_private_records',
+          'sign_in_url',
         ],
         backend: azurermBackend(location),
       };
+      // With privateDns, the public zone gets only the TXT validation record.
       let spec = dns
         ? withDns(site, dns, [
-            { name: 'dns_routing', records: iacRef('module.site.dns_routing_records') },
+            target.privateDns
+              ? { name: 'dns_validation', records: iacRef('module.site.dns_validation_records') }
+              : { name: 'dns_routing', records: iacRef('module.site.dns_routing_records') },
           ])
         : site;
+      if (target.privateDns && target.auth === undefined && !outputsOnly) {
+        input.logger.warn(
+          `targets.${name} has privateDns but no auth: the site stays public at its *.azurestaticapps.net host`,
+        );
+      }
       if (target.ci !== undefined) {
         const subjectPrefix = await githubSubjectPrefix(target.ci, {
           env: input.env,
@@ -373,19 +397,44 @@ export function createAzureIacProfile(
         // retry. So the app (and, with a DNS provider, its CNAME) is created first, then
         // provisioning waits until the zone's nameservers answer with the CNAME (the user
         // creates it from the printed instructions when sforge does not manage DNS).
-        ...(target.domain !== undefined && {
-          prePhase: {
-            targets: [
-              'module.site.azurerm_static_web_app.site',
-              ...(dns === undefined ? [] : ['module.dns_routing']),
-            ],
-            describe: dns === undefined ? describeCname : () => undefined,
-            wait: (outputs, logger) =>
-              waitForCname(target.domain!, String(outputs.default_host_name), logger, {
-                ...(options.cname && { lookup: options.cname }),
-              }),
-          },
-        }),
+        // A private domain is validated with a TXT token instead: the app and the
+        // domain (which yields the token) come first, then the TXT record, which
+        // provisioning waits for.
+        ...(target.domain !== undefined &&
+          target.privateDns && {
+            prePhase: {
+              targets: [
+                'module.site.azurerm_static_web_app.site',
+                'module.site.azurerm_static_web_app_custom_domain.site',
+                ...(dns === undefined ? [] : ['module.dns_validation']),
+              ],
+              describe: dns === undefined ? describePrivateDomain : () => undefined,
+              wait: async (outputs, logger) => {
+                const [record] = (outputs.validation_records ?? []) as { value: string }[];
+                if (record === undefined) return;
+                await waitForRecord(
+                  `_dnsauth.${target.domain!}`,
+                  { type: 'TXT', value: record.value },
+                  logger,
+                  { ...(options.cname && { lookup: options.cname }) },
+                );
+              },
+            },
+          }),
+        ...(target.domain !== undefined &&
+          !target.privateDns && {
+            prePhase: {
+              targets: [
+                'module.site.azurerm_static_web_app.site',
+                ...(dns === undefined ? [] : ['module.dns_routing']),
+              ],
+              describe: dns === undefined ? describeCname : () => undefined,
+              wait: (outputs, logger) =>
+                waitForCname(target.domain!, String(outputs.default_host_name), logger, {
+                  ...(options.cname && { lookup: options.cname }),
+                }),
+            },
+          }),
       };
     },
   };

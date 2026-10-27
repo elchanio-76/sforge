@@ -50,6 +50,18 @@ variable "dns_ready" {
   default     = null
 }
 
+variable "auth_provider" {
+  description = "First sign-in provider of a private site (aad or github), for the sign_in_url output; access itself is set by staticwebapp.config.json at deploy."
+  type        = string
+  default     = null
+}
+
+variable "private_dns" {
+  description = "The domain resolves only in a private zone: validate it with a TXT token, and list its CNAME in dns_private_records instead of dns_records."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

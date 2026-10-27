@@ -44,6 +44,10 @@ export interface FakeAzure {
   storage: { account: boolean; container: boolean; error?: unknown };
   signIn: { error?: unknown };
   azOutput: string | undefined;
+  /** Users of the app as Static Web Apps lists them (roles comma-separated). */
+  users: { provider: string; userId: string; displayName: string; roles: string }[];
+  invitations: Record<string, unknown>[];
+  deletedUsers: string[];
 }
 
 export function fakeAzure(): FakeAzure {
@@ -59,6 +63,9 @@ export function fakeAzure(): FakeAzure {
     storage: { account: true, container: true },
     signIn: {},
     azOutput: SUBSCRIPTION,
+    users: [],
+    invitations: [],
+    deletedUsers: [],
   };
 
   const store: HistoryStore = {
@@ -101,6 +108,29 @@ export function fakeAzure(): FakeAzure {
           async listStaticSiteSecrets() {
             state.secretCalls++;
             return { properties: { apiKey: 'SECRET-DEPLOYMENT-TOKEN' } };
+          },
+          listStaticSiteUsers(_group: string, _name: string, provider: string) {
+            const snapshot = state.users.filter(
+              (u) => provider === 'all' || u.provider === provider,
+            );
+            return (async function* () {
+              yield* snapshot;
+            })();
+          },
+          async createUserRolesInvitationLink(
+            _group: string,
+            _name: string,
+            envelope: Record<string, unknown>,
+          ) {
+            state.invitations.push(envelope);
+            return {
+              invitationUrl: `https://${String(envelope.domain)}/.auth/invitations/abc`,
+              expiresOn: new Date('2026-11-03T12:00:00Z'),
+            };
+          },
+          async deleteStaticSiteUser(_group: string, _name: string, provider: string, id: string) {
+            state.deletedUsers.push(`${provider}/${id}`);
+            state.users = state.users.filter((u) => u.userId !== id);
           },
           listStaticSiteBuilds() {
             for (const id of Object.keys(removing)) {

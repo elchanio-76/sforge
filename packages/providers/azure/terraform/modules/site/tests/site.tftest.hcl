@@ -19,6 +19,11 @@ mock_provider "azurerm" {
       api_key           = "super-secret-deployment-token"
     }
   }
+  mock_resource "azurerm_static_web_app_custom_domain" {
+    defaults = {
+      validation_token = "tok3n"
+    }
+  }
 }
 
 variables {
@@ -68,6 +73,10 @@ run "deployment_token_is_not_exported" {
       output.resource_group_id,
       jsonencode(output.dns_records),
       jsonencode(output.dns_routing_records),
+      jsonencode(output.validation_records),
+      jsonencode(output.dns_validation_records),
+      jsonencode(output.dns_private_records),
+      jsonencode(output.sign_in_url),
     ]), "super-secret-deployment-token")
     error_message = "The deployment token must never be a module output."
   }
@@ -170,5 +179,50 @@ run "no_custom_domain_by_default" {
     condition     = length(azurerm_static_web_app_custom_domain.site) == 0 && length(output.dns_records) == 0 && length(output.dns_routing_records) == 0
     error_message = "Without a domain there is nothing to validate or point."
   }
+
+  assert {
+    condition     = length(output.validation_records) == 0 && length(output.dns_validation_records) == 0 && length(output.dns_private_records) == 0 && output.sign_in_url == null
+    error_message = "Public sites without private DNS have no TXT validation or sign-in."
+  }
 }
 
+
+run "private_domain_validated_by_txt" {
+  command = apply
+
+  variables {
+    domain        = "intra.docs.example.com"
+    private_dns   = true
+    auth_provider = "aad"
+  }
+
+  assert {
+    condition     = azurerm_static_web_app_custom_domain.site[0].validation_type == "dns-txt-token"
+    error_message = "A private domain is validated with a TXT token."
+  }
+
+  assert {
+    condition     = jsonencode(output.validation_records) == jsonencode([{ name = "_dnsauth.intra.docs.example.com", type = "TXT", value = "tok3n" }])
+    error_message = "The TXT record is listed for the public zone."
+  }
+
+  assert {
+    condition     = output.dns_validation_records["intra.docs.example.com"].value == "tok3n"
+    error_message = "A DNS module can create the TXT record."
+  }
+
+  assert {
+    condition     = length(output.dns_records) == 0 && length(output.dns_routing_records) == 0
+    error_message = "The CNAME is not published."
+  }
+
+  assert {
+    condition     = jsonencode(output.dns_private_records) == jsonencode([{ name = "intra.docs.example.com", type = "CNAME", value = "lemon-bush-0123456ab.5.azurestaticapps.net" }])
+    error_message = "The CNAME is listed for the internal DNS."
+  }
+
+  assert {
+    condition     = output.sign_in_url == "https://intra.docs.example.com/.auth/login/aad"
+    error_message = "Users sign in with the first provider on the domain."
+  }
+}

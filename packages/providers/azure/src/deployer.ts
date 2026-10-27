@@ -23,7 +23,12 @@ import { type AzureClients, azureError, defaultClients } from './clients.js';
 import { HistoryConflict, type HistoryStore, type VersionEntry } from './history.js';
 import { assertSignedIn, historyBlobName, resolveSubscription, stateLocation } from './iac.js';
 import { type Rebuild, rebuildAtCommit } from './rebuild.js';
-import { SWA_CONFIG_FILE, generateStaticWebAppConfig } from './swa-config.js';
+import {
+  DENIED_PAGE,
+  SWA_CONFIG_FILE,
+  deniedPage,
+  generateStaticWebAppConfig,
+} from './swa-config.js';
 import { type Uploader, swaCliUploader } from './uploader.js';
 
 /** Outputs of terraform/modules/site the deployer needs. */
@@ -218,8 +223,8 @@ export function createAzureDeployer(
     );
   }
 
-  /** Copy the publishable files (no dot-paths such as .sforge/) and the generated config. */
-  function stage(buildDir: string, paths: string[], configJson: string | undefined): string {
+  /** Copy the publishable files (no dot-paths such as .sforge/) and the generated ones. */
+  function stage(buildDir: string, paths: string[], generated: Record<string, string>): string {
     const root = mkdtempSync(join(tmpdir(), 'sforge-azure-'));
     const site = join(root, 'site');
     mkdirSync(site, { recursive: true });
@@ -228,7 +233,10 @@ export function createAzureDeployer(
       mkdirSync(dirname(destination), { recursive: true });
       copyFileSync(join(buildDir, path), destination, constants.COPYFILE_FICLONE);
     }
-    if (configJson !== undefined) writeFileSync(join(site, SWA_CONFIG_FILE), configJson);
+    for (const [path, content] of Object.entries(generated)) {
+      mkdirSync(dirname(join(site, path)), { recursive: true });
+      writeFileSync(join(site, path), content);
+    }
     return root;
   }
 
@@ -247,8 +255,18 @@ export function createAzureDeployer(
 
     const manifest = readManifest(buildDir);
     const files = publishedFiles(manifest);
-    const generated = generateStaticWebAppConfig(context.config, manifest);
+    const generated = generateStaticWebAppConfig(context.config, manifest, target.auth);
     const ownConfig = manifest.files[SWA_CONFIG_FILE] !== undefined;
+    if (ownConfig && target.auth !== undefined) {
+      // Access rules live in that file: one written by hand could leave the site public.
+      throw new SforgeError(
+        ErrorCode.ConfigInvalid,
+        `static/${SWA_CONFIG_FILE} cannot be used on a private target ("${context.targetName}")`,
+        {
+          hint: `Remove it: sforge writes the access rules of targets.${context.targetName}.auth into ${SWA_CONFIG_FILE}.`,
+        },
+      );
+    }
     if (ownConfig) {
       context.logger.warn(
         `static/${SWA_CONFIG_FILE} is used as it is: sforge's security headers, cache rules and 404 page are not added`,
@@ -259,7 +277,11 @@ export function createAzureDeployer(
       );
     }
 
-    const fileCount = files.length + (ownConfig ? 0 : 1);
+    const extra: Record<string, string> = {
+      ...(!ownConfig && { [SWA_CONFIG_FILE]: generated.json }),
+      ...(target.auth !== undefined && { [DENIED_PAGE]: deniedPage(context.config) }),
+    };
+    const fileCount = files.length + Object.keys(extra).length;
     const bytes = files.reduce((sum, [, entry]) => sum + entry.size, 0);
     if (fileCount > MAX_FILES) {
       throw new SforgeError(
@@ -305,7 +327,7 @@ export function createAzureDeployer(
     const staging = stage(
       buildDir,
       files.map(([path]) => path),
-      ownConfig ? undefined : generated.json,
+      extra,
     );
     const startedAt = Date.now();
     let reported: string | undefined;
