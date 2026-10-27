@@ -20,7 +20,7 @@
     "schema:generate": "pnpm build && for name in config output diagnostics; do node packages/cli/dist/bin.js schema $name > packages/cli/schema/$name.schema.json; done && mv packages/cli/schema/config.schema.json packages/cli/schema/staticforge.schema.json",
     "bench": "node scripts/bench.mjs",
     "test:pack": "node scripts/pack-test.mjs",
-    "test:live": "vitest run packages/cli/test/live.integration.test.ts"
+    "test:live": "vitest run packages/cli/test/live.integration.test.ts packages/cli/test/live-auth.integration.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

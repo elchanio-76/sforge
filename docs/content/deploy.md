@@ -479,3 +479,15 @@ itself. The test checks that the records are created, that the site is served ov
 domain with a valid certificate and canonical URLs on it, on AWS that a preview is served on
 `pr-1.p-<run id>.<parent>` and removed, and after `destroy` that no record with the run id is
 left. Allow 30–60 minutes: certificates and, on Azure, domain validation take a while.
+
+With `SFORGE_LIVE_AUTH=1`, the run tests a [private site](private-sites.md) instead. It checks
+that every URL sends anonymous visitors to sign in. On AWS it then creates a throwaway Cognito
+user (no email is sent), signs in through the managed login in headless Chromium, loads pages,
+assets and (with a domain) a preview through the handoff, signs out, and checks that
+`sforge users revoke-sessions` ends the session. On Azure, signing in needs a real Microsoft or
+GitHub account: the run prints an invitation link, and `SFORGE_LIVE_KEEP=1` leaves the site up for
+a manual check (it prints the `destroy` command to run afterwards).
+
+`SFORGE_LIVE_PRIVATE_DNS=1` (with `SFORGE_LIVE_DOMAIN`) adds `privateDns`: the run checks that
+only validation records are published, and reaches the domain through the CloudFront or Static
+Web Apps address, so the certificate is still checked against the domain.
