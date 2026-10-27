@@ -9,7 +9,8 @@
   version; switching versions (deploy, rollback) takes seconds to a few minutes.
 
 AWS and Azure Static Web Apps targets are available. The sections below describe AWS unless they
-say otherwise; [Azure Static Web Apps](#azure-static-web-apps) lists what differs.
+say otherwise; [Azure Static Web Apps](#azure-static-web-apps) lists what differs. Targets that
+require signing in are described in [Private sites](private-sites.md).
 
 > Custom domains (with records in Cloudflare) and PR previews on AWS are verified against real
 > accounts by the live tests. The GitHub Actions identities are covered by the module tests;
@@ -313,8 +314,10 @@ Static Web Apps validates a subdomain through a CNAME to the app's default host,
 free managed certificate. With `dns`, sforge creates that CNAME in Cloudflare (see
 [DNS records in Cloudflare](#dns-records-in-cloudflare); the same token and rules apply) before
 adding the domain. Without it, `provision` creates the app first, prints the CNAME, and waits (up to
-an hour) while Azure validates it; `--no-wait` stops after printing. Apex domains (`example.com`)
-need TXT validation, which sforge does not support yet: they are refused with `SF_UNSUPPORTED`.
+an hour) while Azure validates it; `--no-wait` stops after printing. A domain in a private DNS zone
+(`privateDns: true`) is validated with a TXT record instead; see
+[Private DNS](private-sites.md#private-dns). Apex domains (`example.com`) are refused with
+`SF_UNSUPPORTED`.
 The Free plan allows two custom domains per app. PR previews stay on their
 `*.azurestaticapps.net` hosts: Static Web Apps has no wildcard domains.
 
@@ -431,7 +434,7 @@ with `dns`.
 Other error codes: `SF_ENGINE_MISSING`, `SF_STATE_MISSING`, `SF_NOT_PROVISIONED`,
 `SF_IAC_FAILED` (with the engine's diagnostics in `details`), `SF_CONFIRMATION_REQUIRED`
 (non-interactive runs need `--yes`), `SF_DEPLOY_FAILED`, `SF_VERSION_NOT_FOUND`,
-`SF_UNSUPPORTED`.
+`SF_UNSUPPORTED`, and for `sforge users`, `SF_USER_EXISTS` and `SF_USER_LIMIT`.
 
 ## Testing the modules
 

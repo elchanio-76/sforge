@@ -64,6 +64,9 @@ they are set.
 | `sforge_versions`        | `sforge versions <target>`     |                                                                                   |
 | `sforge_rollback`        | `sforge rollback <target>`     | `to`; **`confirm: true`**                                                         |
 | `sforge_preview_destroy` | `sforge preview-destroy`       | `target`, `id`; **`confirm: true`**                                               |
+| `sforge_users_list`      | `sforge users list <target>`   | users of a [private site](private-sites.md)                                       |
+| `sforge_users_invite`    | `sforge users invite`          | `user`, `provider`, `expiresHours`; **`confirm: true`**                           |
+| `sforge_users_remove`    | `sforge users remove`          | `user`, `provider`; **`confirm: true`**                                           |
 | `sforge_provision`       | `sforge provision <target>`    | `--allow-infra` only; `diff`, `bootstrapState`; **`confirm: true`** unless `diff` |
 | `sforge_destroy`         | `sforge destroy <target>`      | `--allow-infra` only; `confirm` must repeat the target name                       |
 

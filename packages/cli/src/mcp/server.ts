@@ -43,7 +43,8 @@ Content lives in content/ (Markdown or HTML with YAML front-matter), assets in a
 A typical loop: edit content, call sforge_check, read the diagnostics (ruleId, severity, file, line, url, selector, wcag, hint), fix them, check again. sforge_fix_preview shows the safe automatic fixes as a diff; sforge_check with fix: true applies them. The checker never invents alt text: describe images yourself.
 sforge_dev_start serves the site with live reload at a local URL; call it again for the latest build's problems.
 Tools return the same data as \`sforge <command> --json\`. Errors carry a stable code (SF_*) and often a hint.
-Deploying, rolling back and removing previews change live sites: ask the user first, then pass confirm: true.`;
+Deploying, rolling back and removing previews change live sites: ask the user first, then pass confirm: true.
+Private targets (targets.<name>.auth) require signing in: sforge_users_list shows who may, sforge_users_invite and sforge_users_remove change it (ask the user first, then pass confirm: true).`;
 
 type Summary = 'text' | 'none' | ((data: never) => string);
 
@@ -680,6 +681,104 @@ export function createSforgeMcp(options: SforgeMcpOptions): SforgeMcp {
         }
         return toolResult(
           await command(argv(['preview-destroy'], {}, [args.target, args.id]), ctx),
+          'text',
+        );
+      },
+    );
+
+    tool(
+      'sforge_users_list',
+      {
+        title: 'List users of a private site',
+        description:
+          'List who may sign in to a private target (targets.<name>.auth): Cognito users on AWS, invited "member" users on Azure. SF_UNSUPPORTED for public targets.',
+        input: z.object({ target }),
+        data: 'users list',
+        annotations: CLOUD_READ,
+      },
+      async (args, ctx) =>
+        toolResult(await command(argv(['users', 'list'], {}, [args.target]), ctx), 'text'),
+    );
+
+    tool(
+      'sforge_users_invite',
+      {
+        title: 'Invite a user to a private site',
+        description:
+          'Invite someone to sign in to a private target. AWS: Cognito emails them a temporary password (data.emailed). Azure: returns data.invitationUrl to send them; they sign in with the named provider. Ask the user, then pass confirm: true.',
+        input: z.object({
+          target,
+          user: value('Email address, or a GitHub user name with provider "github".'),
+          provider: z
+            .enum(['aad', 'github'])
+            .optional()
+            .describe("Azure sign-in provider (default: the target's first)."),
+          expiresHours: z
+            .number()
+            .int()
+            .min(1)
+            .max(168)
+            .optional()
+            .describe('Hours the Azure invitation link stays valid (default 168).'),
+          confirm,
+        }),
+        data: 'users invite',
+        annotations: CLOUD_WRITE,
+      },
+      async (args, ctx) => {
+        if (args.confirm !== true) {
+          return errorResult(
+            ErrorCode.ConfirmationRequired,
+            `Inviting ${args.user} gives them access to "${args.target}". Ask the user, then call again with confirm: true.`,
+          );
+        }
+        return toolResult(
+          await command(
+            argv(
+              ['users', 'invite'],
+              { '--provider': args.provider, '--expires': args.expiresHours },
+              [args.target, args.user],
+            ),
+            ctx,
+          ),
+          'text',
+        );
+      },
+    );
+
+    tool(
+      'sforge_users_remove',
+      {
+        title: 'Remove a user from a private site',
+        description:
+          'Remove someone from a private target. On AWS their current sign-in lasts until it expires (auth.sessionHours). Ask the user, then pass confirm: true.',
+        input: z.object({
+          target,
+          user: value('Email address or GitHub user name.'),
+          provider: z
+            .enum(['aad', 'github'])
+            .optional()
+            .describe('Azure sign-in provider of the user.'),
+          confirm,
+        }),
+        data: 'users remove',
+        annotations: CLOUD_WRITE,
+      },
+      async (args, ctx) => {
+        if (args.confirm !== true) {
+          return errorResult(
+            ErrorCode.ConfirmationRequired,
+            `Removing ${args.user} from "${args.target}" takes away their access. Ask the user, then call again with confirm: true.`,
+          );
+        }
+        return toolResult(
+          await command(
+            argv(['users', 'remove'], { '--yes': true, '--provider': args.provider }, [
+              args.target,
+              args.user,
+            ]),
+            ctx,
+          ),
           'text',
         );
       },

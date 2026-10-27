@@ -270,6 +270,48 @@ export function commandDataSchemas(): Record<string, Schema> {
       deleted: count('Files removed.'),
       existed: boolean(),
     }),
+    'users list': object({
+      target: targetName,
+      provider: { enum: ['aws', 'azure'] },
+      users: {
+        type: 'array',
+        items: object(
+          {
+            id: string('Cognito sub, or the Static Web Apps user id.'),
+            name: string('Email address, or GitHub user name.'),
+          },
+          {
+            provider: string('Sign-in provider (Azure: "aad" or "github").'),
+            status: string('Cognito account state, e.g. FORCE_CHANGE_PASSWORD or CONFIRMED.'),
+            enabled: boolean(),
+            createdAt: string(),
+          },
+        ),
+      },
+    }),
+    'users invite': object(
+      {
+        target: targetName,
+        user: string('Email address, or GitHub user name.'),
+        emailed: boolean(
+          'True when the cloud emailed the invitation (AWS); false when invitationUrl must be passed on (Azure).',
+        ),
+      },
+      {
+        provider: string('Sign-in provider (Azure).'),
+        invitationUrl: string('Invitation link to send the user (Azure).'),
+        expiresAt: string('When the invitation link expires (Azure).'),
+      },
+    ),
+    'users remove': object({
+      target: targetName,
+      user: string(),
+      removed: boolean('False when there was no such user.'),
+    }),
+    'users revoke-sessions': object({
+      target: targetName,
+      revoked: { const: true },
+    }),
     'ci init': object({
       directory: string('Where the workflows are, relative to the repository root.'),
       created: strings('Workflow files written, relative to the repository root.'),

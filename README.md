@@ -89,7 +89,8 @@ See [docs/content/content.md](docs/content/content.md) for project layout, URLs,
 - Errors carry a stable `error.code` (`SF_CONFIG_INVALID`, `SF_CONFIG_NOT_FOUND`, …). Match on the code, not the message.
 - Exit codes: `0` success, `1` the command ran and found failures, `2` usage or config error, `3` internal error.
 - `--non-interactive` (implied when `CI` is set or stdin is not a TTY) never prompts:
-  `provision` and `rollback` then need `--yes`, `destroy` needs `--confirm <target>`
+  `provision`, `rollback`, `users remove` and `users revoke-sessions` then need `--yes`,
+  `destroy` needs `--confirm <target>`
   (`SF_CONFIRMATION_REQUIRED` otherwise).
 
 ### Commands available so far
@@ -108,6 +109,7 @@ sforge deploy <target>     # build, check, deploy (--preview <id>, --no-build, -
 sforge versions <target>   # deployed versions and previews
 sforge rollback <target>   # serve the previous version (--to <versionId>, --yes)
 sforge preview-destroy <target> <id>
+sforge users list|invite|remove|revoke-sessions <target> [user]  # users of a private target (auth)
 sforge destroy <target> --confirm <target>
 sforge ci init             # GitHub Actions workflows: checks, PR previews, deploys (--targets, --force)
 sforge config validate     # validate staticforge.config.{ts,js,json,yaml}

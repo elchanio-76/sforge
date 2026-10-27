@@ -14,6 +14,7 @@ import { registerNewCommand } from './commands/new.js';
 import { registerPreviewCommand } from './commands/preview.js';
 import { registerProvisionCommands } from './commands/provision.js';
 import { registerSchemaCommand } from './commands/schema.js';
+import { registerUsersCommand } from './commands/users.js';
 import { registerVersionCommand } from './commands/version.js';
 import { type Io, processIo } from './io.js';
 import { type Envelope, OUTPUT_SCHEMA_VERSION } from './output.js';
@@ -51,6 +52,7 @@ export function createProgram(runtime: Runtime): Command {
   registerProvisionCommands(program, runtime);
   registerIacCommand(program, runtime);
   registerDeployCommands(program, runtime);
+  registerUsersCommand(program, runtime);
   registerConfigCommands(program, runtime);
   registerCiCommand(program, runtime);
   registerSchemaCommand(program, runtime);

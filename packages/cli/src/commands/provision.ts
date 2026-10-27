@@ -22,6 +22,18 @@ export function localStateFrom(flags: StateFlags, env: NodeJS.ProcessEnv): boole
   return true;
 }
 
+type DnsRecord = { name: string; type: string; value: string };
+
+/** privateDns: the records for the company's internal DNS, never published by sforge. */
+function privateRecords(outputs: Record<string, unknown>): string[] {
+  const records = outputs.dns_private_records as DnsRecord[] | undefined;
+  if (records === undefined || records.length === 0) return [];
+  return [
+    'Add these records to your internal (private) DNS zone:',
+    ...records.map((r) => `  ${r.name} ${r.type} ${r.value}`),
+  ];
+}
+
 function describe(result: ProvisionResult, target: TargetConfig, cwd: string): string {
   const lines: string[] = [];
   if (result.bootstrap) {
@@ -42,13 +54,15 @@ function describe(result: ProvisionResult, target: TargetConfig, cwd: string): s
   }
   const outputs = result.outputs ?? {};
   if (typeof outputs.url === 'string') lines.push(`URL: ${outputs.url}`);
-  const dns = outputs.dns_records as { name: string; type: string; value: string }[] | undefined;
+  const dns = outputs.dns_records as DnsRecord[] | undefined;
   // Records in Route 53 or a dns provider are created by the apply itself.
   const managed = target.dns !== undefined || (target.provider === 'aws' && target.hostedZone);
   if (dns && dns.length > 0 && result.applied && !managed) {
     lines.push('Create these DNS records for the site:');
     lines.push(...dns.map((r) => `  ${r.name} ${r.type} ${r.value}`));
   }
+  lines.push(...privateRecords(outputs));
+  if (typeof outputs.sign_in_url === 'string') lines.push(`Sign-in: ${outputs.sign_in_url}`);
   if (typeof outputs.ci_role_arn === 'string') lines.push(`CI deploy role: ${outputs.ci_role_arn}`);
   lines.push(`Workspace: ${displayPath(cwd, result.workspace)}`);
   return lines.join('\n');
@@ -126,6 +140,10 @@ export function registerProvisionCommands(program: Command, runtime: Runtime): v
         const lines = [
           `${target.targetName} (${target.target.provider}): ${url ?? 'not provisioned'}`,
           `Active version: ${versionId ?? 'none'}`,
+          ...privateRecords(drift.outputs),
+          ...(typeof drift.outputs.sign_in_url === 'string'
+            ? [`Sign-in: ${drift.outputs.sign_in_url}`]
+            : []),
           drift.drifted
             ? `Drift detected:\n${drift.drift.map((d) => `  ! ${d.address} (${d.action})`).join('\n') || '  (the plan has changes)'}`
             : 'No drift: the infrastructure matches the last apply.',

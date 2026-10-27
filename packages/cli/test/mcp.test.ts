@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/client';
 import { InMemoryTransport } from '@modelcontextprotocol/server';
-import type { DeployOptions, Provider } from '@staticforge/provider-api';
+import type { DeployOptions, Provider, UserAdmin } from '@staticforge/provider-api';
 import { run } from '../src/main.js';
 import { type SforgeMcpOptions, createSforgeMcp } from '../src/mcp/server.js';
 import { expectMatchesSchema } from './schema-validation.js';
@@ -92,6 +92,9 @@ describe('sforge mcp', () => {
         'sforge_versions',
         'sforge_rollback',
         'sforge_preview_destroy',
+        'sforge_users_list',
+        'sforge_users_invite',
+        'sforge_users_remove',
       ]),
     );
     expect(names).not.toContain('sforge_provision');
@@ -355,6 +358,79 @@ describe('sforge mcp', () => {
 
       const missing = await call('sforge_versions', { target: 'prod' });
       expect(missing.texts[0]).toMatch(/^SF_TARGET_NOT_FOUND: /);
+    });
+
+    it('manages the users of a private target only once confirmed', async () => {
+      const cwd = project({
+        targets: {
+          staging: { provider: 'azure', resourceGroup: 'rg', location: 'eastus2', auth: {} },
+        },
+      });
+      mkdirSync(join(cwd, '.sforge', 'state'), { recursive: true });
+      writeFileSync(
+        join(cwd, '.sforge', 'state', 'staging.json'),
+        JSON.stringify({
+          target: 'staging',
+          provider: 'azure',
+          engine: 'tofu',
+          updatedAt: '',
+          outputs: {},
+        }),
+      );
+      const invited: unknown[] = [];
+      const removed: string[] = [];
+      const users: UserAdmin = {
+        list: async () => [{ id: 'u1', name: 'ana@example.com', provider: 'aad' }],
+        async invite(options) {
+          invited.push(options);
+          return {
+            user: options.user,
+            provider: options.provider ?? 'aad',
+            emailed: false,
+            invitationUrl: 'https://x.azurestaticapps.net/.auth/invitations/abc',
+            expiresAt: '2026-11-03T12:00:00.000Z',
+          };
+        },
+        async remove(user) {
+          removed.push(user);
+          return true;
+        },
+      };
+      const azure: Provider = {
+        id: 'azure',
+        iac: { provider: 'azure', prepare: () => Promise.reject(new Error('not used')) },
+        requiredOutputs: [],
+        createDeployer: () => ({}) as never,
+        createUserAdmin: () => users,
+      };
+      const { call } = await connect({ cwd, providers: { azure } });
+
+      const list = await call('sforge_users_list', { target: 'staging' });
+      expect(list.data.users).toEqual([{ id: 'u1', name: 'ana@example.com', provider: 'aad' }]);
+
+      expect(
+        (await call('sforge_users_invite', { target: 'staging', user: 'octocat' })).isError,
+      ).toBe(true);
+      const invite = await call('sforge_users_invite', {
+        target: 'staging',
+        user: 'octocat',
+        provider: 'github',
+        expiresHours: 24,
+        confirm: true,
+      });
+      expect(invite.data).toMatchObject({ emailed: false, invitationUrl: expect.any(String) });
+      expect(invited).toEqual([{ user: 'octocat', provider: 'github', expiresHours: 24 }]);
+
+      expect(
+        (await call('sforge_users_remove', { target: 'staging', user: 'octocat' })).isError,
+      ).toBe(true);
+      const gone = await call('sforge_users_remove', {
+        target: 'staging',
+        user: 'octocat',
+        confirm: true,
+      });
+      expect(gone.data).toEqual({ target: 'staging', user: 'octocat', removed: true });
+      expect(removed).toEqual(['octocat']);
     });
   });
 });

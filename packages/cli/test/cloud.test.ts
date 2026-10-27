@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { type DnsProfile, type IacProfile, prepareDns } from '@staticforge/iac';
-import type { DeployOptions, Deployer, Provider } from '@staticforge/provider-api';
+import type { DeployOptions, Deployer, Provider, UserAdmin } from '@staticforge/provider-api';
 import { applyCreates, fakeEngine, planCreates } from '../../providers/iac/test/fake-engine.js';
 import type { Io } from '../src/io.js';
 import { run } from '../src/main.js';
@@ -592,5 +592,148 @@ describe('sforge deploy, versions and rollback', () => {
     });
     expect(result.json().error.code).toBe('SF_USAGE');
     expect(existsSync(join(cwd, 'dist'))).toBe(false);
+  });
+});
+
+describe('private targets', () => {
+  function privateProject(auth: Record<string, unknown> = {}) {
+    const cwd = project({ staging: { provider: 'aws', region: 'eu-central-1', auth } });
+    mkdirSync(join(cwd, '.sforge', 'state'), { recursive: true });
+    writeFileSync(
+      join(cwd, '.sforge', 'state', 'staging.json'),
+      JSON.stringify({
+        target: 'staging',
+        provider: 'aws',
+        engine: 'tofu',
+        updatedAt: '',
+        outputs: { url: 'https://d111.cloudfront.net', auth_user_pool_id: 'pool' },
+      }),
+    );
+    return cwd;
+  }
+
+  function withUsers() {
+    const fake = fakeProvider();
+    const calls: string[] = [];
+    const users: UserAdmin = {
+      async list() {
+        calls.push('list');
+        return [{ id: 's1', name: 'ana@example.com', status: 'CONFIRMED', enabled: true }];
+      },
+      async invite(options) {
+        calls.push(`invite ${options.user}`);
+        return { user: options.user, emailed: true };
+      },
+      async remove(user) {
+        calls.push(`remove ${user}`);
+        return user === 'ana@example.com';
+      },
+      async revokeSessions() {
+        calls.push('revoke');
+      },
+    };
+    const provider: Provider = { ...fake.provider, createUserAdmin: () => users };
+    return { provider, calls, deploys: fake.deploys };
+  }
+
+  it('lists, invites and removes users', async () => {
+    const cwd = privateProject();
+    const { provider, calls } = withUsers();
+    const providers = { aws: provider };
+    const list = await sforge(['users', 'list', 'staging', '--json'], { cwd, providers });
+    expect(list.json().data).toEqual({
+      target: 'staging',
+      provider: 'aws',
+      users: [{ id: 's1', name: 'ana@example.com', status: 'CONFIRMED', enabled: true }],
+    });
+    const invite = await sforge(['users', 'invite', 'staging', 'bob@example.com'], {
+      cwd,
+      providers,
+    });
+    expect(invite.stdout).toContain('Cognito emails a temporary password');
+
+    const refused = await sforge(['users', 'remove', 'staging', 'ana@example.com', '--json'], {
+      cwd,
+      providers,
+    });
+    expect(refused.json().error.code).toBe('SF_CONFIRMATION_REQUIRED');
+    const removed = await sforge(['users', 'remove', 'staging', 'ana@example.com', '--yes'], {
+      cwd,
+      providers,
+    });
+    expect(removed.stdout).toContain('lasts up to 8 hours');
+    const revoked = await sforge(['users', 'revoke-sessions', 'staging', '--yes', '--json'], {
+      cwd,
+      providers,
+    });
+    expect(revoked.json().data).toEqual({ target: 'staging', revoked: true });
+    expect(calls).toEqual(['list', 'invite bob@example.com', 'remove ana@example.com', 'revoke']);
+  });
+
+  it('validates invitation expiries and refuses public targets', async () => {
+    const cwd = privateProject();
+    const { provider } = withUsers();
+    const bad = await sforge(
+      ['users', 'invite', 'staging', 'a@example.com', '--expires', '0', '--json'],
+      {
+        cwd,
+        providers: { aws: provider },
+      },
+    );
+    expect(bad.json().error.code).toBe('SF_USAGE');
+    const publicCwd = project();
+    const result = await sforge(['users', 'list', 'staging', '--json'], {
+      cwd: publicCwd,
+      providers: { aws: provider },
+    });
+    expect(result.exitCode).toBe(2);
+    expect(result.json().error.code).toBe('SF_UNSUPPORTED');
+  });
+
+  it('builds private sites with noindex', async () => {
+    const cwd = privateProject();
+    const { provider, deploys } = withUsers();
+    const result = await sforge(['deploy', 'staging', '--no-check', '--json'], {
+      cwd,
+      providers: { aws: provider },
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(deploys).toHaveLength(1);
+    expect(readFileSync(join(cwd, 'dist', 'index.html'), 'utf8')).toContain(
+      '<meta name="robots" content="noindex">',
+    );
+  });
+
+  it('shows the records for the internal DNS and the sign-in URL after provisioning', async () => {
+    const cwd = project({ staging: { provider: 'aws', region: 'eu-central-1' } });
+    const { env } = engineEnv({
+      plan: planCreates('module.site.aws_s3_bucket.site'),
+      apply: applyCreates('module.site.aws_s3_bucket.site'),
+      output: {
+        stdout: [
+          JSON.stringify({
+            ...outputs,
+            dns_private_records: {
+              value: [{ name: 'intra.example.com', type: 'CNAME', value: 'd111.cloudfront.net' }],
+              sensitive: false,
+            },
+            sign_in_url: {
+              value: 'https://intra.example.com/_sforge/auth/login',
+              sensitive: false,
+            },
+          }),
+        ],
+      },
+    });
+    const result = await sforge(['provision', 'staging', '--yes'], {
+      cwd,
+      env,
+      providers: { aws: fakeProvider().provider },
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toContain(
+      'Add these records to your internal (private) DNS zone:\n  intra.example.com CNAME d111.cloudfront.net',
+    );
+    expect(result.stdout).toContain('Sign-in: https://intra.example.com/_sforge/auth/login');
   });
 });

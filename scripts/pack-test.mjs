@@ -87,6 +87,12 @@ try {
     ].every((dir) => existsSync(join(project, `node_modules/@staticforge/${dir}/versions.tf`))),
     'the HCL modules are in the packages',
   );
+  check(
+    ['router.js', 'auth-lambda/index.mjs'].every((file) =>
+      existsSync(join(project, `node_modules/@staticforge/aws/terraform/modules/site/${file}`)),
+    ),
+    'the router function and the sign-in Lambda are in the AWS package',
+  );
 
   // The MCP server answers over stdio.
   const tools = await new Promise((resolve, reject) => {

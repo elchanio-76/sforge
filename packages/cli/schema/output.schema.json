@@ -313,6 +313,86 @@
       "if": {
         "properties": {
           "command": {
+            "const": "users list"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/users-list-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "users invite"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/users-invite-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "users remove"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/users-remove-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "const": "users revoke-sessions"
+          }
+        },
+        "required": [
+          "command",
+          "data"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/users-revoke-sessions-data"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command": {
             "const": "ci init"
           }
         },
@@ -1475,6 +1555,136 @@
         },
         "existed": {
           "type": "boolean"
+        }
+      }
+    },
+    "users-list-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "provider",
+        "users"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "provider": {
+          "enum": [
+            "aws",
+            "azure"
+          ]
+        },
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Cognito sub, or the Static Web Apps user id."
+              },
+              "name": {
+                "type": "string",
+                "description": "Email address, or GitHub user name."
+              },
+              "provider": {
+                "type": "string",
+                "description": "Sign-in provider (Azure: \"aad\" or \"github\")."
+              },
+              "status": {
+                "type": "string",
+                "description": "Cognito account state, e.g. FORCE_CHANGE_PASSWORD or CONFIRMED."
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "createdAt": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "users-invite-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "user",
+        "emailed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "user": {
+          "type": "string",
+          "description": "Email address, or GitHub user name."
+        },
+        "emailed": {
+          "type": "boolean",
+          "description": "True when the cloud emailed the invitation (AWS); false when invitationUrl must be passed on (Azure)."
+        },
+        "provider": {
+          "type": "string",
+          "description": "Sign-in provider (Azure)."
+        },
+        "invitationUrl": {
+          "type": "string",
+          "description": "Invitation link to send the user (Azure)."
+        },
+        "expiresAt": {
+          "type": "string",
+          "description": "When the invitation link expires (Azure)."
+        }
+      }
+    },
+    "users-remove-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "user",
+        "removed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "user": {
+          "type": "string"
+        },
+        "removed": {
+          "type": "boolean",
+          "description": "False when there was no such user."
+        }
+      }
+    },
+    "users-revoke-sessions-data": {
+      "type": "object",
+      "required": [
+        "target",
+        "revoked"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Target name from the config."
+        },
+        "revoked": {
+          "const": true
         }
       }
     },
