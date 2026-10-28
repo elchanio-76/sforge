@@ -69,3 +69,13 @@ trusted publishing (no npm token is stored anywhere). `scripts/publish.mjs` skip
 are already published, so a failed release can be re-run (`gh run rerun <run id> --failed`).
 The `npm error 404 No match found for version` lines in its log are that check and are expected.
 New versions take a minute or so to appear in `npm view` and `npm install`.
+
+Two failures seen with 0.3.0, both fixed by waiting and re-running:
+
+- `TLOG_CREATE_ENTRY_ERROR … (409) an equivalent entry already exists in the transparency log`:
+  Sigstore's log answered slowly and npm's retry collided with its own entry. Nothing was
+  published for that package; a re-run signs again.
+- `409 Conflict … Cannot publish over previously staged version`: npm accepted an earlier
+  publish (`+ <package>@<version>` in the log) but has not made it visible yet. This took six
+  minutes once. `npm stage list <package>` (npm 11) shows nothing to approve; wait until
+  `npm view <package>@<version>` answers, then re-run.

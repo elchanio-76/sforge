@@ -588,7 +588,7 @@ No Lambda@Edge, and every part fits a free tier: the existing **router CloudFron
 3. Azure (C): SWA config, users, TXT validation. Done 2026-10-27.
 4. CLI `users` command, MCP tools, docs. Done 2026-10-27.
 5. Live tests (ask first): AWS, then Azure with the user's manual sign-in check. AWS passed 2026-10-28 (custom domain, `privateDns`, preview, sign-out, `revoke-sessions`, `users remove`; nothing left behind). Azure passed 2026-10-28 with a custom domain (the user's manual check), and again with `privateDns`. Done 2026-10-28.
-6. rc release, test repository, 0.3.0. 0.3.0-rc.1 published and checked in `sforge-ci-test` 2026-10-28; 0.3.0 tagged the same day. Done 2026-10-28.
+6. rc release, test repository, 0.3.0. 0.3.0-rc.1 published and checked in `sforge-ci-test` 2026-10-28; 0.3.0 published the same day (the release job needed two re-runs, see RELEASING.md). Done 2026-10-28.
 
 ## 19. M11 plan: Firebase Hosting (`@staticforge/firebase`, package 16)
 
