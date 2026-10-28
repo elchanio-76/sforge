@@ -4,6 +4,7 @@ import { REQUIRED_OUTPUTS, createAzureDeployer } from './deployer.js';
 import { createAzureIacProfile } from './iac.js';
 import { createAzureUserAdmin } from './users.js';
 
+export * from './client.js';
 export * from './clients.js';
 export * from './cname.js';
 export * from './deployer.js';

@@ -45,7 +45,6 @@
     "@azure/arm-appservice": "^19.0.0",
     "@azure/arm-storage": "^21.0.0",
     "@azure/identity": "^4.14.0",
-    "@azure/static-web-apps-cli": "^2.1.0",
     "@azure/storage-blob": "^12.34.0",
     "@staticforge/build": "workspace:*",
     "@staticforge/core": "workspace:*",

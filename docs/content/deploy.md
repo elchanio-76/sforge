@@ -369,8 +369,8 @@ file.
 ### Deploying, versions and rollback
 
 `sforge deploy prod` copies the publishable files of the build (never `.sforge/`) and a generated
-`staticwebapp.config.json` to a temporary directory, uploads it with the `swa` deployment client
-(`@azure/static-web-apps-cli`, which downloads Microsoft's `StaticSitesClient` on first use), and
+`staticwebapp.config.json` to a temporary directory, uploads it with Microsoft's `StaticSitesClient`
+(downloaded on first use into `~/.cache/staticforge/bin/`, pinned to one build and checked against a SHA-256 built into sforge; the process sees only a minimal environment), and
 waits until Azure reports the environment ready. The generated file carries:
 
 - the `security` headers on every response (and the WebAssembly CSP on the search page and

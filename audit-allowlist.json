@@ -1,0 +1,11 @@
+{
+  "comment": "Advisories that `pnpm audit --prod` reports and that the audit guard (scripts/audit-guard.mjs) accepts. Each entry needs the reason and the date it was last reviewed; the guard fails when a review is older than 180 days.",
+  "advisories": [
+    {
+      "id": "GHSA-xcx6-jx8p-x3h5",
+      "package": "@azure/msal-node",
+      "reason": "Affects the authorization code flow (InteractiveBrowserCredential, AuthorizationCodeCredential). sforge only creates DefaultAzureCredential, which does not use that flow. @azure/identity 4.x requires msal-node ^6 and the fix is in 7.1.0; remove this entry when identity moves to 7.",
+      "reviewed": "2026-10-28"
+    }
+  ]
+}

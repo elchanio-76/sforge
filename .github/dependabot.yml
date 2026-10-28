@@ -1,0 +1,24 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directories:
+      - /packages/providers/aws/terraform/modules/site
+      - /packages/providers/aws/terraform/state-bootstrap
+      - /packages/providers/azure/terraform/modules/ci-oidc
+      - /packages/providers/azure/terraform/modules/site
+      - /packages/providers/azure/terraform/state-bootstrap
+      - /packages/providers/cloudflare/terraform/modules/records
+    schedule:
+      interval: weekly

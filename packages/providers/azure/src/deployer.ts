@@ -29,7 +29,7 @@ import {
   deniedPage,
   generateStaticWebAppConfig,
 } from './swa-config.js';
-import { type Uploader, swaCliUploader } from './uploader.js';
+import { type Uploader, staticSitesClientUploader } from './uploader.js';
 
 /** Outputs of terraform/modules/site the deployer needs. */
 export const REQUIRED_OUTPUTS = [
@@ -96,7 +96,7 @@ export function createAzureDeployer(
 ): Deployer {
   const target = context.target as AzureTargetConfig;
   const project = projectName(context.config);
-  const uploader = options.uploader ?? swaCliUploader;
+  const uploader = options.uploader ?? staticSitesClientUploader;
   const rebuild = options.rebuild ?? rebuildAtCommit;
 
   const output = (key: string): string => {
@@ -339,6 +339,7 @@ export function createAzureDeployer(
           environment,
           token,
           env: context.env,
+          logger: context.logger,
         })
       ).url;
     } finally {
