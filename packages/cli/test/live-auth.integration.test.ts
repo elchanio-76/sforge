@@ -358,13 +358,15 @@ describe.runIf(enabled)(`live ${provider} private site`, { timeout: 90 * MINUTE 
           await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');
           const previewUrl = `https://pr-1.${previewDomain}`;
           // Signed in to Cognito already: the handoff gives the preview host its cookie.
+          // Until the preview reaches the edge, the router answers 404 "no preview".
           await eventually(async () => {
             await page.goto(`${previewUrl}/about/`);
             if (page.url() !== `${previewUrl}/about/`) throw new Error(`at ${page.url()}`);
+            if (
+              !(await page.content()).includes(`<link rel="canonical" href="${previewUrl}/about/"`)
+            )
+              throw new Error('the preview is not served yet');
           }, 10 * MINUTE);
-          expect(await page.content()).toContain(
-            `<link rel="canonical" href="${previewUrl}/about/"`,
-          );
           await sforge(dir, 'preview-destroy', target, 'pr-1');
         }
 
