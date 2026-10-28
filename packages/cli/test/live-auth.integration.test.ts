@@ -126,6 +126,8 @@ describe.runIf(enabled)(`live ${provider} private site`, { timeout: 90 * MINUTE 
         site: { title: 'Private live test', baseUrl: 'https://live.example.com' },
         styles: ['/assets/css/site.css'],
         scripts: ['/assets/js/site.js'],
+        // The example's blog links to its feeds.
+        collections: { blog: { dir: 'content/blog', perPage: 2 } },
         iac: { name: `sforge-auth-${id}` },
         targets: {
           [target]:
