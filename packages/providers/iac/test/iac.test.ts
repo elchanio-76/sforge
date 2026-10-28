@@ -294,6 +294,7 @@ describe('workspace generation', () => {
       retain_versions: 10,
     });
     expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toContain('/main.tf.json');
+    expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toContain('/.sforge-*.zip');
 
     // Removing an infra file removes its copy; switching to local state removes the backend.
     writeFileSync(join(extra, 'waf.tf'), '');

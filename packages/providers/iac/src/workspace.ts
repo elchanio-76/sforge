@@ -167,6 +167,8 @@ export function writeWorkspace(options: WriteWorkspaceOptions): string[] {
       '/tfplan',
       '/terraform.tfstate',
       '/terraform.tfstate.*',
+      // Archives built during plan (the AWS sign-in Lambda), not inputs.
+      '/.sforge-*.zip',
       ...(options.vendor ? [] : ['/main.tf.json']),
       '',
     ].join('\n'),
