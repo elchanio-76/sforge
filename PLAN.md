@@ -731,3 +731,5 @@ The MCP tools call the CLI's own `run()` in-process (`packages/cli/src/mcp/invok
 ### As built (M12)
 
 **F.1 Baseline: done.** Numbers and the first findings are in `REVIEW.md` (S-1 to S-4, Q-1 to Q-4). Coverage tooling added (`@vitest/coverage-v8`). `actionlint` is clean; `zizmor` found unpinned actions in `ci.yml`. Not run yet: `tflint`, `trivy`/`checkov` (not installed), and turning on CodeQL code scanning (a repository setting, needs the user's go-ahead).
+
+**Trivy and CodeQL: done.** `tflint` and `trivy config` ran over the HCL (REVIEW Q-5, S-5 to S-8); all trivy findings are accepted with reasons. **Deferred:** an optional CloudFront access-logging feature (off by default, new logging bucket); not valuable enough for this version. CodeQL default setup was enabled on `elchanio-76/sforge`; its first results get triaged under D.8.
