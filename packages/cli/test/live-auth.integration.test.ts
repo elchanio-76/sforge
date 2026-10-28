@@ -308,9 +308,18 @@ describe.runIf(enabled)(`live ${provider} private site`, { timeout: 90 * MINUTE 
               (location ? ` → ${location.split('?')[0]}` : ''),
           );
         });
+        // The deploy reaches every CloudFront edge within minutes (KVS); until then the
+        // router answers 503 "not deployed" to signed-in visitors.
         const heading = async () => {
           try {
-            return await page.locator('h1').first().textContent({ timeout: 10_000 });
+            return await eventually(async () => {
+              const found = page.locator('h1').first();
+              if ((await found.count()) === 0) {
+                await page.reload();
+                throw new Error('no heading yet');
+              }
+              return found.textContent();
+            }, 5 * MINUTE);
           } catch {
             const body = (await page.content()).replace(/\s+/g, ' ').slice(0, 600);
             throw new Error(
