@@ -118,7 +118,8 @@ export function registerUsersCommand(program: Command, runtime: Runtime): void {
         const lasts =
           config.provider === 'aws' && config.auth !== undefined
             ? ` Their sign-in on the site lasts up to ${config.auth.sessionHours} hours; \`sforge users revoke-sessions ${name}\` ends every sign-in now.`
-            : '';
+            : // Static Web Apps keeps the roles in the session cookie (seen live).
+              ' They keep access until they sign out or their Static Web Apps sign-in expires.';
         return {
           data: { target: name, user, removed },
           text: removed

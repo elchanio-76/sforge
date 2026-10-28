@@ -96,6 +96,9 @@ Static Web Apps sends no email: `invite` prints an invitation link (valid 1 to 1
 default). Send it to the user; they open it and sign in with the account it names (an email
 address for `aad`, a user name for `github`).
 
+A removed user keeps access until they sign out or their Static Web Apps sign-in expires: the role
+is part of their session. There is no way to end it early.
+
 The Free plan allows 25 users with custom roles per app; `invite` refuses the 26th
 (`SF_USER_LIMIT`). Restricting sign-in to one Entra ID tenant, to groups, or to another identity
 provider needs the Standard plan and is not supported.
