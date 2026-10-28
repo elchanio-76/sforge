@@ -7,7 +7,7 @@ learned the hard way. It does not repeat what lives elsewhere:
 - [README.md](README.md): install, development commands, packages, the CLI contract (`--json`
   envelope, `SF_*` error codes, exit codes, non-interactive rules) and the command list.
 - [PLAN.md](PLAN.md): the living design document. §1–§14 describe the design per package, §15
-  the milestones (M0–M9 done; 0.2.0 released), §16 end-to-end verification, §17 the M9 plan with
+  the milestones (M0–M10 done; 0.3.0 released), §16 end-to-end verification, §17 the M9 plan with
   "Done / As built / Found and fixed" notes per step, §18 the M10 plan (private sites) and §19 the
   M11 plan (Firebase Hosting).
 - [RELEASING.md](RELEASING.md): npm trusted publishing, adding a package, every release.
@@ -43,8 +43,9 @@ learned the hard way. It does not repeat what lives elsewhere:
 - `sforge ci init` templates changed: run the generated workflows through `actionlint` (with
   `shellcheck`); not installed globally, download a release binary into the scratchpad.
 - Known flaky under full-suite load (predate M9, not fixed): the dev-server tests "writes the
-  search index after serving each build" and "removes its temporary builds on close". Rerun
-  before investigating.
+  search index after serving each build", "removes its temporary builds on close" and (seen
+  once, 0.3.0) "marks stylesheet-only changes so the client can swap CSS without reloading".
+  Rerun before investigating.
 
 ## Cloud and service access
 
