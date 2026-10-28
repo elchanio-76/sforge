@@ -27,6 +27,12 @@ interface Route {
 export const MEMBER_ROLE = 'member';
 /** Static Web Apps' preconfigured sign-in providers. */
 const PROVIDERS = ['aad', 'github'] as const;
+/**
+ * Providers its sign-in service still answers for (custom on Standard, or retired), so a
+ * private target blocks them too: the live test found google and facebook redirecting to
+ * Azure's identity service on a Free app.
+ */
+const OTHER_PROVIDERS = ['google', 'facebook', 'twitter'] as const;
 
 /** Shown (as a 403) to visitors who signed in but were not invited; added by the deployer. */
 export const DENIED_PAGE = '_sforge/denied.html';
@@ -157,10 +163,12 @@ export function generateStaticWebAppConfig(
     auth === undefined
       ? []
       : [
-          ...PROVIDERS.filter((p) => !auth.providers.includes(p)).map((p) => ({
-            route: `/.auth/login/${p}`,
-            statusCode: 404,
-          })),
+          ...[...PROVIDERS.filter((p) => !auth.providers.includes(p)), ...OTHER_PROVIDERS].map(
+            (p) => ({
+              route: `/.auth/login/${p}`,
+              statusCode: 404,
+            }),
+          ),
           { route: `/${DENIED_PAGE}`, allowedRoles: ['authenticated'] },
         ];
   if (

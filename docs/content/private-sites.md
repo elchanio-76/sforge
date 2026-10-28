@@ -74,7 +74,8 @@ handbook: {
 ```
 
 Static Web Apps signs visitors in with its preconfigured providers: `aad` (Microsoft accounts and
-any Entra ID tenant) and `github`. Visitors are sent to the first provider in the list. Signing in
+any Entra ID tenant) and `github`. Visitors are sent to the first provider in the list; every other
+provider, including Azure's `google`, `facebook` and `twitter`, answers 404. Signing in
 is not enough: only users invited with the role `member` get in. Everyone else sees a short page
 that explains this and offers to sign out.
 

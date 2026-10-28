@@ -237,8 +237,10 @@ describe.runIf(enabled)(`live ${provider} private site`, { timeout: 90 * MINUTE 
       expect(response.body, path).not.toContain('Welcome');
     }
     if (provider === 'azure') {
-      // Only the configured providers can be used.
-      expect((await get(`${url}/.auth/login/twitter`, hosts)).status).toBe(404);
+      // Only the configured providers can be used (Azure still answers for these).
+      for (const other of ['google', 'facebook', 'twitter']) {
+        expect((await get(`${url}/.auth/login/${other}`, hosts)).status, other).toBe(404);
+      }
     }
   });
 

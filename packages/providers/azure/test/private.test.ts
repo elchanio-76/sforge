@@ -52,11 +52,16 @@ describe('staticwebapp.config.json of a private target', () => {
   it('requires the member role on every route, with the catch-all last', () => {
     const { config } = generateStaticWebAppConfig(siteConfig, files, { providers: ['aad'] });
     const routes = config.routes as Route[];
-    expect(routes[0]).toEqual({ route: '/.auth/login/github', statusCode: 404 });
-    expect(routes[1]).toEqual({ route: `/${DENIED_PAGE}`, allowedRoles: ['authenticated'] });
+    expect(routes.slice(0, 4)).toEqual(
+      ['github', 'google', 'facebook', 'twitter'].map((p) => ({
+        route: `/.auth/login/${p}`,
+        statusCode: 404,
+      })),
+    );
+    expect(routes[4]).toEqual({ route: `/${DENIED_PAGE}`, allowedRoles: ['authenticated'] });
     expect(routes.at(-1)).toEqual({ route: '/*', allowedRoles: ['member'] });
     // Only the first matching route applies: a header route without roles would let visitors in.
-    for (const route of routes.slice(2)) expect(route.allowedRoles).toEqual(['member']);
+    for (const route of routes.slice(5)) expect(route.allowedRoles).toEqual(['member']);
     expect(routes.some((r) => r.route === '/search/*')).toBe(true);
     expect(routes.some((r) => r.headers?.['Cache-Control']?.includes('immutable'))).toBe(true);
   });
@@ -73,7 +78,10 @@ describe('staticwebapp.config.json of a private target', () => {
       '403': { rewrite: `/${DENIED_PAGE}`, statusCode: 403 },
       '404': { rewrite: '/404.html', statusCode: 404 },
     });
-    expect((config.routes as Route[]).filter((r) => r.statusCode === 404)).toEqual([]);
+    // Both preconfigured providers are allowed; only the others are blocked.
+    expect(
+      (config.routes as Route[]).filter((r) => r.statusCode === 404).map((r) => r.route),
+    ).toEqual(['/.auth/login/google', '/.auth/login/facebook', '/.auth/login/twitter']);
     expect((config.globalHeaders as Record<string, string>)['Cache-Control']).toBe(
       'private, max-age=0, must-revalidate',
     );
