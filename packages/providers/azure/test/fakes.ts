@@ -131,6 +131,8 @@ export function fakeAzure(): FakeAzure {
           async deleteStaticSiteUser(_group: string, _name: string, provider: string, id: string) {
             state.deletedUsers.push(`${provider}/${id}`);
             state.users = state.users.filter((u) => u.userId !== id);
+            // As the real SDK (v19): the API answers 204, which it reports as an error.
+            throw Object.assign(new Error('Unexpected status code: 204'), { statusCode: 204 });
           },
           listStaticSiteBuilds() {
             for (const id of Object.keys(removing)) {

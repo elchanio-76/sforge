@@ -163,12 +163,17 @@ export function createAzureUserAdmin(
         for (const entry of found) {
           await (
             await sites()
-          ).deleteStaticSiteUser(
-            output('resource_group'),
-            output('static_web_app_name'),
-            entry.provider ?? 'all',
-            entry.id,
-          );
+          )
+            .deleteStaticSiteUser(
+              output('resource_group'),
+              output('static_web_app_name'),
+              entry.provider ?? 'all',
+              entry.id,
+            )
+            .catch((error: unknown) => {
+              // The API answers 204 No Content, which the SDK (expecting 200) throws on.
+              if ((error as { statusCode?: number } | null)?.statusCode !== 204) throw error;
+            });
         }
         return found.length > 0;
       } catch (error) {
