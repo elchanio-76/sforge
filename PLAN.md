@@ -576,6 +576,7 @@ No Lambda@Edge, and every part fits a free tier: the existing **router CloudFron
 - Live (`SFORGE_LIVE_AUTH=1`, asked before every run):
   - AWS: anonymous → 302 to login; in Chromium (playwright-core) a test user (`AdminCreateUser` + `AdminSetUserPassword --permanent`) signs in through managed login, pages and assets load, a preview loads through the handoff, sign-out works. With `privateDns`: no public routing record (Cloudflare MCP), and the certificate is valid when fetched with the CloudFront address forced (custom `lookup`).
   - Azure: anonymous → 302 to `/.auth/login/aad`, every route of the served config has `allowedRoles`; then by hand (the user): an invited account gets in, a second account sees the denied page, previews too. With `privateDns`: TXT validation and the certificate.
+- **AWS live: passed (2026-10-28)**, sixth run, with a custom domain, `privateDns` and `previewDomain` (about 11 minutes). Confirmed: `nodejs24.x`, Cognito managed login (email and password fields found by label), `atob` and `crypto` HMAC in the router, the cookie and the preview handoff, `Cache-Control: private` on pages and assets, `noindex`, sign-out, `revoke-sessions` (old cookie refused within the wait), `users list/remove`; only validation records in Cloudflare; nothing left in the account afterwards. Found and fixed, all in the test: the example's blog collection was missing (feed links broke the pre-deploy check); signing in right after a deploy can hit an edge that has not received the KVS change yet (503 "not deployed", or 404 "no preview" for a preview), so the test now waits for the page itself; Playwright's `page.request` runs in Node, where the browser's host-resolver rules do not apply, so signed-in requests go through the test's `get()` with the browser's cookies. The test prints the redirect trail when sign-in lands on a page without a heading.
 - Docs: new `docs/content/private-sites.md` (users, sessions and revocation, limits, the private DNS split horizon, the reachable default host), `deploy.md`, `mcp.md`.
 - Release 0.3.0: rc on `next`, checked in `sforge-ci-test`, then final.
 
@@ -584,7 +585,7 @@ No Lambda@Edge, and every part fits a free tier: the existing **router CloudFron
 2. AWS (B): HCL, router, Lambda, users; unit and `tofu test`. Done 2026-10-27.
 3. Azure (C): SWA config, users, TXT validation. Done 2026-10-27.
 4. CLI `users` command, MCP tools, docs. Done 2026-10-27.
-5. Live tests (ask first): AWS, then Azure with the user's manual sign-in check. Test written; not run yet.
+5. Live tests (ask first): AWS, then Azure with the user's manual sign-in check. AWS passed 2026-10-28 (custom domain, `privateDns`, preview, sign-out, `revoke-sessions`, `users remove`; nothing left behind); Azure not run yet.
 6. rc release, test repository, 0.3.0.
 
 ## 19. M11 plan: Firebase Hosting (`@staticforge/firebase`, package 16)
