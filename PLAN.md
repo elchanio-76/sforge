@@ -727,3 +727,7 @@ The MCP tools call the CLI's own `run()` in-process (`packages/cli/src/mcp/invok
 - `pnpm audit --prod` shows no high or critical advisory outside the allowlist.
 - Live tests only where fixes change cloud behavior (the uploader if the SWA CLI goes, the router or Lambda if the sign-in changes), asked before every run; then the `sforge-ci-test` flow if a template changed.
 - A patch release (rc first): 0.3.1 if M12 lands before M11.
+
+### As built (M12)
+
+**F.1 Baseline: done.** Numbers and the first findings are in `REVIEW.md` (S-1 to S-4, Q-1 to Q-4). Coverage tooling added (`@vitest/coverage-v8`). `actionlint` is clean; `zizmor` found unpinned actions in `ci.yml`. Not run yet: `tflint`, `trivy`/`checkov` (not installed), and turning on CodeQL code scanning (a repository setting, needs the user's go-ahead).
