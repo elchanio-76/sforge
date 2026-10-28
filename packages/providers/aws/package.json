@@ -1,6 +1,6 @@
 {
   "name": "@staticforge/aws",
-  "version": "0.2.0",
+  "version": "0.3.0-rc.1",
   "description": "AWS provider for staticforge: private S3 + CloudFront (OAC), KeyValueStore versions, previews",
   "keywords": [
     "staticforge",

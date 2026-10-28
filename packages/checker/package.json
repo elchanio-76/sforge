@@ -1,6 +1,6 @@
 {
   "name": "@staticforge/checker",
-  "version": "0.2.0",
+  "version": "0.3.0-rc.1",
   "description": "Accessibility and correctness checks for built sites, with safe autofixes",
   "keywords": [
     "staticforge",
