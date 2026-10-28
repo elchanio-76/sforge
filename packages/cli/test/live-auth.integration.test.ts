@@ -344,12 +344,15 @@ describe.runIf(enabled)(`live ${provider} private site`, { timeout: 90 * MINUTE 
           .click();
         await page.waitForURL(`${url}/about/`, { timeout: MINUTE });
         expect(await heading()).toBeTruthy();
-        const css = await page.request.get(`${url}/assets/theme/css/theme.css`);
-        expect(css.status()).toBe(200);
-        expect(css.headers()['content-type']).toContain('text/css');
-        const html = await page.request.get(`${url}/`);
-        expect(html.headers()['cache-control']).toContain('private');
-        expect(await html.text()).toContain('<meta name="robots" content="noindex">');
+        // Requests outside the browser, with its cookies: only `get` maps private DNS names.
+        const signedIn = async () =>
+          (await page.context().cookies(url)).map((c) => `${c.name}=${c.value}`).join('; ');
+        const css = await get(`${url}/assets/theme/css/theme.css`, hosts, await signedIn());
+        expect(css.status).toBe(200);
+        expect(String(css.headers['content-type'])).toContain('text/css');
+        const html = await get(`${url}/`, hosts, await signedIn());
+        expect(String(html.headers['cache-control'])).toContain('private');
+        expect(html.body).toContain('<meta name="robots" content="noindex">');
 
         if (previewDomain !== undefined) {
           await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');
@@ -385,8 +388,8 @@ describe.runIf(enabled)(`live ${provider} private site`, { timeout: 90 * MINUTE 
         await page.waitForURL(`${url}/about/`, { timeout: MINUTE });
         await sforge(dir, 'users', 'revoke-sessions', target, '--yes');
         await eventually(async () => {
-          const response = await page.request.get(`${url}/`, { maxRedirects: 0 });
-          if (response.status() !== 302) throw new Error(`still signed in (${response.status()})`);
+          const response = await get(`${url}/`, hosts, await signedIn());
+          if (response.status !== 302) throw new Error(`still signed in (${response.status})`);
         }, 10 * MINUTE);
       } finally {
         await browser.close();
