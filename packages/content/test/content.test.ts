@@ -5,6 +5,7 @@ import {
   extractFrontMatter,
   parseContent,
   prepareSource,
+  startsDocument,
   titleFromPath,
 } from '../src/index.js';
 
@@ -275,5 +276,30 @@ describe('titleFromPath', () => {
   it('humanizes file and section names', () => {
     expect(titleFromPath('content/getting_started.md')).toBe('Getting started');
     expect(titleFromPath('content/blog/index.md')).toBe('Blog');
+  });
+});
+
+describe('startsDocument', () => {
+  it('recognizes a doctype or html element after whitespace and comments', () => {
+    expect(startsDocument('<!doctype html><title>x</title>')).toBe(true);
+    expect(startsDocument('  \n<!-- a -->\n<!-- b -->  <HTML lang="en">')).toBe(true);
+    expect(startsDocument('<!---->\n<html>')).toBe(true);
+    expect(startsDocument('<p>fragment</p>')).toBe(false);
+    expect(startsDocument('<!-- never closed <html>')).toBe(false);
+    expect(startsDocument('<!--> <html>')).toBe(false);
+    expect(startsDocument('')).toBe(false);
+  });
+
+  it('stays fast on long runs of comments and whitespace', () => {
+    const started = performance.now();
+    for (const body of [
+      '<!-- a -->'.repeat(20_000) + 'x',
+      '<!-- a -->  '.repeat(20_000) + 'x',
+      `<!--${' '.repeat(100_000)}x`,
+      `${' '.repeat(100_000)}x`,
+    ]) {
+      expect(startsDocument(body)).toBe(false);
+    }
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });

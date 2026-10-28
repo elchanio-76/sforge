@@ -92,7 +92,7 @@ export function azureError(
   if (
     AUTH_ERRORS.has(name) ||
     status === 401 ||
-    /az login|AADSTS|credential|token.*expired|no accounts were found/i.test(message)
+    /az login|AADSTS|credential|token.{0,100}expired|no accounts were found/i.test(message)
   ) {
     return new SforgeError(ErrorCode.CloudAuth, `${what}: ${firstLine(message)}`, {
       cause: error,

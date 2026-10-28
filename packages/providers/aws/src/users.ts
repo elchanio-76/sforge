@@ -84,7 +84,7 @@ export function createAwsUserAdmin(
 
     async invite(options: InviteOptions): Promise<InviteResult> {
       const email = options.user.trim().toLowerCase();
-      if (!EMAIL.test(email)) {
+      if (email.length > 254 || !EMAIL.test(email)) {
         throw new SforgeError(ErrorCode.Usage, `"${options.user}" is not an email address`, {
           hint: 'Users of AWS targets sign in with their email address.',
         });

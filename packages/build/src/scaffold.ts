@@ -45,7 +45,7 @@ const slugify = (name: string): string =>
   name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'site';
+    .replace(/^-|-$/g, '') || 'site';
 
 /** Render a config object as a TypeScript literal with unquoted keys and single quotes. */
 function toTsLiteral(value: unknown, indent = ''): string {

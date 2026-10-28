@@ -79,7 +79,24 @@ const enhanceFragment = unified()
     fallbackLanguage: 'text',
   });
 
-const DOCUMENT = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype\s|<html[\s>])/i;
+const DOCUMENT_START = /^(?:<!doctype\s|<html[\s>])/i;
+
+/**
+ * Whether the body is a complete document: a doctype or `<html>` after any
+ * whitespace and comments. A scan, not one regex: nested quantifiers over
+ * comments backtrack without bound on a long run of them.
+ */
+export function startsDocument(body: string): boolean {
+  let i = 0;
+  for (;;) {
+    while (i < body.length && /\s/.test(body.charAt(i))) i++;
+    if (!body.startsWith('<!--', i)) break;
+    const end = body.indexOf('-->', i + 4);
+    if (end === -1) return false;
+    i = end + 3;
+  }
+  return DOCUMENT_START.test(body.slice(i, i + 16));
+}
 
 /** "about-us" → "About us": a last-resort title. */
 export function titleFromPath(path: string): string {
@@ -97,7 +114,7 @@ function parseHtml(
   source: PreparedSource,
   report: Report,
 ): { kind: ContentKind; tree: Root; docTitle?: string } {
-  const isDocument = DOCUMENT.test(source.body);
+  const isDocument = startsDocument(source.body);
   // parse5 reports tokenizer errors only; tree-construction problems (e.g.
   // stray end tags) are left to the checker's html-validate rules.
   const tree = fromHtml(source.body, {

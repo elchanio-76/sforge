@@ -69,7 +69,7 @@ export function awsError(
   if (error instanceof SforgeError) return error;
   const name = errorName(error);
   const message = error instanceof Error ? error.message : String(error);
-  if (AUTH_ERRORS.has(name) || /credential|sso session|token.*expired/i.test(message)) {
+  if (AUTH_ERRORS.has(name) || /credential|sso session|token.{0,100}expired/i.test(message)) {
     return new SforgeError(ErrorCode.CloudAuth, `${what}: ${message}`, {
       cause: error,
       hint: 'Sign in to AWS (e.g. `aws sso login`, or set AWS_PROFILE) and try again.',
