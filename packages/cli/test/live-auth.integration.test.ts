@@ -297,6 +297,27 @@ describe.runIf(enabled)(`live ${provider} private site`, { timeout: 90 * MINUTE 
       });
       try {
         const page = await browser.newPage();
+        // Every response the browser saw (without query strings, which hold codes and
+        // tokens), to explain a failed sign-in.
+        const trail: string[] = [];
+        page.on('response', (response) => {
+          const at = new URL(response.url());
+          const location = response.headers().location;
+          trail.push(
+            `${response.status()} ${at.origin}${at.pathname}` +
+              (location ? ` → ${location.split('?')[0]}` : ''),
+          );
+        });
+        const heading = async () => {
+          try {
+            return await page.locator('h1').first().textContent({ timeout: 10_000 });
+          } catch {
+            const body = (await page.content()).replace(/\s+/g, ' ').slice(0, 600);
+            throw new Error(
+              `No heading at ${page.url()}\n${trail.slice(-30).join('\n')}\nPage: ${body}`,
+            );
+          }
+        };
         await page.goto(`${url}/about/`);
         // Cognito's managed login: email, then password (one or two steps).
         await page.getByLabel(/email/i).first().fill(email);
@@ -313,7 +334,7 @@ describe.runIf(enabled)(`live ${provider} private site`, { timeout: 90 * MINUTE 
           .first()
           .click();
         await page.waitForURL(`${url}/about/`, { timeout: MINUTE });
-        expect(await page.locator('h1').first().textContent()).toBeTruthy();
+        expect(await heading()).toBeTruthy();
         const css = await page.request.get(`${url}/assets/theme/css/theme.css`);
         expect(css.status()).toBe(200);
         expect(css.headers()['content-type']).toContain('text/css');
