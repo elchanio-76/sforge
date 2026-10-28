@@ -323,6 +323,7 @@ User documentation: `docs/content/ci.md`. `sforge ci init [--targets a,b] [--pac
 11. **M9 Custom domains + GitHub Actions deploys** ✅ (released as 0.2.0 on 2026-10-25; plan approved the same day, details in §17): Cloudflare-managed DNS records through a new `dns` target option (`@staticforge/cloudflare`), custom domains `aws.sforge.elchanio-76.eu` (previews on `pr-N.preview.aws.sforge.elchanio-76.eu`) and `azure.sforge.elchanio-76.eu`, the Azure `ci-oidc` identity, per-target base URLs, `sforge ci init`, opt-in domain live tests, and the GitHub flow verified in the test repository `elchanio-76/sforge-ci-test` against `0.2.0-rc.2` (dist-tag `next`; immutable OIDC subjects, previews marked noindex and three CI fixes found there). The test repository's resources were destroyed after the user checked both sites.
 12. **M10 Private sites** ✅ (released as 0.3.0 on 2026-10-28; planned 2026-10-26, details in §18; live runs and the CI check in `sforge-ci-test` passed 2026-10-28): `targets.<n>.auth` makes a target require sign-in on every URL (AWS: Cognito user pool, session cookie checked by the router function, a regional Lambda for sign-in; Azure Free: preconfigured providers and invited users in the `member` role), `sforge users list|invite|remove|revoke-sessions`, and `privateDns` (validation records public, the site's records printed for internal DNS).
 13. **M11 Firebase Hosting** (planned 2026-10-26, details in §19; release 0.4.0): a third provider, `@staticforge/firebase` (package 16), public sites only: Blaze plan within the free quotas in an existing project, GCS state, Hosting REST API deployer with native preview channels and release-based rollback, Workload Identity Federation for CI, custom domains through Cloudflare.
+14. **M12 Code review** (planned 2026-10-28, details in §20; a patch release): a full review of the code base in three parts, each with findings recorded in `REVIEW.md` and fixed with tests or deferred with a reason: code quality (per package, with coverage, unused-code and layering tools), security (private-site sign-in, CI identities and workflows, secrets, input handling, the MCP server, the 13 `pnpm audit` advisories that all arrive through `@azure/static-web-apps-cli`), and CLI ↔ MCP parity (an inventory of every command, option and tool, a parity test suite that runs both interfaces on the same fixtures, and documented drift).
 
 ## 16. Verification (end to end)
 1. `pnpm -r test` (unit + snapshot + checker fixtures) plus `tofu test` for the HCL modules and `pnpm -r typecheck`.
@@ -632,3 +633,97 @@ A third provider, Firebase Hosting, for public sites. Decisions (made with the u
 - Live (`SFORGE_LIVE=firebase SFORGE_LIVE_CONFIRM=<project id>`, asked before every run): bootstrap, provision, two deploys, HTTP checks (headers, redirects, 404, `.sforge/` hidden), a preview channel and its removal, rollback, destroy. Domain mode on `t-<id>.firebase.sforge.elchanio-76.eu`. Site IDs get a random suffix (deleted IDs are not immediately reusable).
 - `sforge-ci-test`: a Firebase target, then the PR, merge, close and rollback flow.
 - `pnpm test:pack` (16 packages), then 0.4.0 (rc first).
+
+## 20. M12 plan: code review (quality, security, CLI ↔ MCP parity)
+
+### Context
+staticforge has grown through M0–M10 to 15 packages: about 17,000 lines of TypeScript (cli 3.9k, build 2.3k, checker 2.1k, azure 1.9k, iac 1.8k, aws 1.3k, core 1.1k, the rest under 1k each), the default theme, the HCL modules (AWS, Azure, Cloudflare, state bootstrap), the CloudFront router function and the sign-in Lambda, the `ci init` workflow templates, and the repository's own CI and release workflows. Each milestone was reviewed as it landed; no review has looked at the whole. M12 does that, in three parts: quality, security, and parity between the command line and the MCP server. It does not depend on M11; run first, it gives the Firebase provider a reviewed base to copy from.
+
+Not in scope: new features, the theme's visual design, and rewrites. A finding that needs a redesign gets a plan of its own.
+
+### A. Method
+- **Findings log**: `REVIEW.md` in the repository root (committed). One entry per finding: id (`Q-n`, `S-n`, `P-n`), area and `file:line`, severity (critical, high, medium, low, info), what is wrong and how it shows, the decision, and the commit that fixes it or the reason it is deferred. PLAN.md keeps a summary and the "As built" notes, as for M9 and M10.
+- **Fixes**: one commit per finding or per small group of findings, each with a test that fails before the fix where the finding is a bug. Behavior changes are noted in the docs and in the release notes.
+- **Baseline first**: run the tools below on the current `main` and record the numbers in `REVIEW.md`, so the review can show what changed.
+- **Severity guide**: critical and high are fixed in M12; medium are fixed unless the fix is a redesign (then deferred with a plan); low and info are fixed when cheap, otherwise listed.
+- Aids, not substitutes for reading the code: the `/security-review` and `/code-review` skills on each package, and the tools in B–D.
+
+### B. Dependency audit (the `npm audit` findings)
+`pnpm audit --prod` on `main` (0.3.0) reports 13 advisories (8 high, 3 moderate, 2 low). All of them arrive through `@azure/static-web-apps-cli` 2.1.0 (the latest), a dependency of `@staticforge/azure`:
+
+| Package | Advisories | Path | Patched |
+|---|---|---|---|
+| `adm-zip` | 5 high, 3 moderate (decompression bombs, symlink and SUID handling on extraction, duplicate entries, an async crash) | `swa-cli > adm-zip` | ≥ 0.6.1 |
+| `node-forge` | 1 high (RSA PKCS#1 v1.5 signature check) | `swa-cli > selfsigned > node-forge` | ≥ 1.4.1 |
+| `tmp` | 1 high (path traversal through prefix/postfix), 1 low (symlink `dir`) | `swa-cli > devcert > tmp` | ≥ 0.2.6 |
+| `@azure/msal-node` | 1 high (authorization code flow may send parameters to an attacker's endpoint) | `swa-cli > @azure/identity > @azure/msal-node` | ≥ 7.1.0; `@azure/identity` 4.14.0 still requires `^6` |
+| `deepmerge` | 1 low (prototype poisoning) | `swa-cli > json-schema-library > deepmerge` | none |
+
+`@staticforge/azure` uses the SWA CLI for one thing: `uploader.ts` spawns `swa deploy`, which downloads and runs Microsoft's StaticSitesClient. Steps:
+1. **Reachability**: for each advisory, establish whether `swa deploy` reaches the vulnerable code (adm-zip probably extracts the StaticSitesClient download; devcert, selfsigned and node-forge belong to the local emulator's certificates; msal-node to `swa login`, which sforge never runs because it passes the deployment token). Separately, check whether sforge's own `@azure/identity` (direct dependency, same msal-node `^6`) uses the authorization code flow anywhere (it should only use the Azure CLI and environment credentials). Record each verdict in `REVIEW.md`.
+2. **Decide on the SWA CLI**: (a) drop it and download StaticSitesClient directly: pinned version, checksum checked against Microsoft's release metadata, cached under `~/.cache/staticforge/bin/` like OpenTofu. This removes all 13 advisories and a large dependency tree from every install, including AWS-only users of the `staticforge` package; (b) keep it and wait for upstream; `pnpm.overrides` do not reach users who install from npm, so they are not a fix. Recommendation: (a), if StaticSitesClient's download and flags can be pinned reliably; prove it with the Azure live test (asked first).
+3. **Guard in CI**: a `pnpm audit --prod --audit-level=high` step that fails on any high or critical advisory not listed in an allowlist file (`audit-allowlist.json`: advisory id, reason, review date). Also audit the dev dependencies (reported, not blocking).
+4. Also covered: Dependabot or Renovate for npm, GitHub Actions and the OpenTofu providers (the lock files); the pinned action SHAs in `scripts/ci-pins.mjs` and the repository's workflows are current.
+
+### C. Code quality review
+Per package, in dependency order (core, content, render, assets, build, checker, dev-server, server, theme-default, provider-api, iac, cloudflare, aws, azure, cli):
+- **Conventions** (CLAUDE.md): `SforgeError` with a stable `ErrorCode` and a `hint` everywhere an error reaches the user; no bare `throw new Error` on user paths; optional fields by spreading; comments that explain why; names consistent across providers (the AWS and Azure deployers, users and IaC profiles should read alike).
+- **Structure**: layering (core and provider-api import no provider; providers do not import each other or the CLI), cycles, duplicated logic between the AWS and Azure providers that belongs in provider-api or iac, long functions in `cli` and `build`.
+- **Types**: `as` casts, non-null `!` assertions and `unknown` narrowing on external data (cloud SDK responses, config, front matter); count them in the baseline and justify or remove each.
+- **Tests**: coverage per package (`vitest --coverage`, v8; baseline recorded, no gate yet), untested modules (for example `packages/server/src/static-server.ts` has no test of its own), and the three known flaky dev-server tests (CLAUDE.md): find the cause and fix them.
+- **Unused code**: unused files, exports and dependencies (`knip`).
+- **Consistency of the command line**: flags for the same idea should match. Known: `destroy` takes `--confirm <target>`, `users remove` and `revoke-sessions` take `--yes`; decide whether the difference is deliberate (destroy asks for the name on purpose) and document it, or align.
+- **HCL modules**: `tofu validate` and `tflint`, variable descriptions and validations, naming and tagging alike in AWS and Azure. Known and open: on Terraform 1.16.1 `terraform test` fails the AWS run `custom_domain_with_route53_and_previews` (OpenTofu passes); the "Drift detected" log lines after an apply are cosmetic and not filtered.
+- **Release tooling**: `scripts/publish.mjs` could wait and retry on the two 409s seen with 0.3.0 (RELEASING.md) instead of failing the job.
+- **Docs against behavior**: README's command list and every `docs/content/*.md` page against `--help` and the code.
+- Tools added as dev dependencies and scripts where they earn their place (`knip`, coverage); one-off runs otherwise.
+
+### D. Security review
+Threat model first (a short section in `REVIEW.md`: assets, actors, trust boundaries: the project's own files and config are trusted, as the config is code; content from contributors in pull requests, cloud responses, MCP clients and the network are not). Then, by area:
+1. **Private sites (M10)**:
+   - AWS router function: the cookie's HMAC check is constant-time, the expiry is enforced and the host is bound.
+   - Cookie attributes: `Secure`, `HttpOnly`, `SameSite`, host-only.
+   - The `return` parameter cannot redirect to another site (open redirect).
+   - The preview handoff link: one minute, bound to a host, replay within the minute.
+   - The sign-in Lambda: `state`, PKCE and `nonce`; ID tokens verified against the JWKS with issuer, audience and expiry.
+   - The session key: SSM SecureString and the KVS, which the CI role can read (documented); `revoke-sessions`.
+   - Azure: every route of the generated `staticwebapp.config.json` has `allowedRoles`; the blocked providers; the 401 and 403 overrides; the refusal of a user's own config file on private targets.
+2. **Cloud identities**: the AWS CI role's policy and trust (OIDC subject with the immutable prefix, branches, environments, pull requests); the Lambda's role; the bucket policy (OAC only) and public access block. Azure: the custom role on one Static Web App, the ABAC condition on the state blobs, the federated credentials. Compare each with what the code calls (CLAUDE.md: code in CI must not call anything wider).
+3. **Secrets**: the Azure deployment token never reaches logs, `--json` output or MCP progress messages; the Cloudflare token likewise. `uploader.ts` passes the whole process environment to `swa deploy` (a downloaded binary), including any AWS keys and the Cloudflare token present: give it only what it needs. The same check for every `spawn` (OpenTofu, Terraform, git, Chromium).
+4. **Input handling**:
+   - Paths from content and config: slugs, `new <kind> <path>`, files copied from `static/` (symlinks out of the project), output directories.
+   - The dev and preview servers: path traversal, dot paths, the address they listen on, and the live-reload endpoint.
+   - Rendering: escaping of titles, descriptions and front matter in templates, the search index, feeds and the sitemap; what raw HTML in Markdown can do (allowed by design; documented).
+   - The checker's headless Chromium: sandbox, and no network beyond the local server.
+5. **The MCP server**: the infrastructure tools appear only with `--allow-infra`; deploy, rollback, preview removal and user changes only with `confirm: true`; tools cannot write outside the project (`sforge_new_page` paths); tool output carries site content back to the agent (prompt injection: documented in `mcp.md`); no secrets in results or logs.
+6. **Workflows and supply chain**:
+   - The repository's CI and release workflows, and the `ci init` templates, through `zizmor` and `actionlint`: permissions, pinned actions, script injection through `${{ github.* }}` expressions in `run:` steps, `pull_request` versus `pull_request_target`, and forks (no OIDC token, no previews).
+   - Release provenance and trusted publishing; the pre-push secret scan.
+7. **Infrastructure defaults**: TLS policies (CloudFront minimum protocol, Azure), security headers (HSTS, CSP for search, frame options), bucket encryption and versioning, state bucket and storage account settings; `trivy config` or `checkov` over the HCL as a cross-check.
+8. Turn on GitHub code scanning (CodeQL default setup) for the repository, and a secret scanning check; fix or dismiss what it reports, with reasons.
+
+### E. CLI ↔ MCP parity
+The MCP tools call the CLI's own `run()` in-process (`packages/cli/src/mcp/invoke.ts`), so behavior is shared by design; drift can still come from the argument mapping, defaults, output schemas, error handling, and commands without a tool.
+1. **Inventory** (a table in `REVIEW.md`, and its stable part in `docs/content/mcp.md`): every command, subcommand and option, and the tool and parameter that maps to it, or the reason there is none. The starting point:
+   - Mapped: `build`, `check` (and `check --fix` / the fix preview), `dev` (start and stop), `new`, `config show`, `schema`, `deploy`, `status`, `versions`, `rollback`, `preview-destroy`, `users list|invite|remove`, and with `--allow-infra` `provision` and `destroy`.
+   - CLI only: `init`, `preview`, `iac`, `ci init`, `config validate`, `users revoke-sessions`, `version`, `mcp`.
+   - Each CLI-only command is either given a tool or listed as deliberate with the reason (for example `iac` passes raw arguments to OpenTofu).
+2. **Mapping checks**: each tool parameter becomes the right flag with the same default; enum values match; the confirmation rules match (`--yes`, `--confirm <target>` versus `confirm: true`); global options (`--config`, `--cwd`, `--quiet`) behave the same.
+3. **Output and errors**: a tool's structured result equals the `data` of the command's `--json` envelope; its output schema is the one `sforge schema` publishes; failures carry the same `SF_*` code and hint, and `isError` matches a non-zero exit.
+4. **Parity test suite** (`packages/cli/test/parity.test.ts`): table-driven, one row per mapped tool. Each row runs the command with `--json` and the tool through an in-memory MCP client on the same fixture site, with the fake providers already used by `mcp.test.ts` for the cloud tools, and compares the results after normalizing times, temporary paths and ports. Error rows do the same for a failure of each kind (usage, config, not provisioned, unsupported, user exists).
+5. **Drift guard**: a test that walks the commander program and the registered tools and fails when a command or option has neither a mapping nor an entry in the CLI-only list, so a new command cannot drift silently.
+6. **Acceptance**: the whole suite passes, including `cli.test.ts`, `mcp.test.ts` and the new parity tests; every difference found is either fixed or documented in `REVIEW.md` and `mcp.md`.
+
+### F. Order of work
+1. Baseline: tools (coverage, knip, dependency layering, zizmor, actionlint, tflint, trivy, `pnpm audit`), numbers into `REVIEW.md`, code scanning on.
+2. Dependency audit (B): reachability, the SWA CLI decision, the CI audit guard.
+3. Security review (D), highest risk first: private-site sign-in, secrets and spawned processes, the MCP server, workflows, input handling, infrastructure defaults.
+4. CLI ↔ MCP parity (E): inventory, parity suite, drift guard, fixes and docs.
+5. Code quality review (C), package by package; the flaky tests.
+6. Release.
+
+### G. Verification and release
+- All checks from CLAUDE.md: format, lint, typecheck, the full suite, `pnpm test:iac` and `tofu test` for changed modules, the docs build and check, `pnpm test:pack`, actionlint on the `ci init` output.
+- `pnpm audit --prod` shows no high or critical advisory outside the allowlist.
+- Live tests only where fixes change cloud behavior (the uploader if the SWA CLI goes, the router or Lambda if the sign-in changes), asked before every run; then the `sforge-ci-test` flow if a template changed.
+- A patch release (rc first): 0.3.1 if M12 lands before M11.
