@@ -57,7 +57,8 @@ Run these commands with your own AWS sign-in. Deploys from CI never touch the us
 
 PR previews (`previewDomain`) are private too. Sign-in always happens on the domain; a preview
 host then gets its own cookie through a one-minute handoff link, so one callback URL serves every
-preview.
+preview. The link is bound to the preview host and works for 60 seconds, for anyone who holds it; keep
+the address out of chat and logs.
 
 With a domain, the `*.cloudfront.net` host redirects to it. Set `allowCloudFrontHost: true` to
 serve the site and sign in there as well (for example from outside the company network).

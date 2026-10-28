@@ -206,7 +206,15 @@ describe('router.js on a private target', () => {
       expect(response.statusCode).toBe(403);
     }
     const token = session({ host: 'pr-7.preview.example.com', hx: nowSeconds + 60 });
-    for (const r of ['//evil.example', '/\\evil.example', 'https://evil.example/', '%E0%A4%A']) {
+    for (const r of [
+      '//evil.example',
+      '/\\evil.example',
+      'https://evil.example/',
+      '%E0%A4%A',
+      '/\t/evil.example',
+      '/\n/evil.example',
+      '/ok\\evil.example',
+    ]) {
       const response = await router(
         request(
           '/_sforge/session',

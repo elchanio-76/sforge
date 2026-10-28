@@ -1,3 +1,5 @@
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -40,6 +42,29 @@ describe.skipIf(!browserAvailable)(
       });
       expect(result.diagnostics).toEqual([]);
       expect(result).toMatchObject({ ok: true, rendered: 'ran', pages: 17 });
+    });
+
+    it('does not reach any server but its own', async () => {
+      const requests: string[] = [];
+      const other = createServer((req, res) => {
+        requests.push(req.url ?? '');
+        res.end('x');
+      });
+      await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
+      const { port } = other.address() as AddressInfo;
+      try {
+        const rootDir = tempProject({
+          'content/index.md': '# Home\n',
+          'content/doc.html': DOCUMENT.replace(
+            '<h1>Doc</h1>',
+            `<h1>Doc</h1><img src="http://127.0.0.1:${port}/pixel.png" alt="Pixel">`,
+          ),
+        });
+        await checkSite({ rootDir, config: config(), headless: true, requireBrowser: true });
+        expect(requests).toEqual([]);
+      } finally {
+        other.close();
+      }
     });
 
     it('finds contrast problems and says which modes they occur in', async () => {

@@ -170,8 +170,11 @@ async function authorize(request, host, preview) {
     } catch (e) {
       back = '/';
     }
-    // Only paths on this host: never "//other.example" or "/\other.example".
-    if (back.charAt(0) !== '/' || back.charAt(1) === '/' || back.charAt(1) === '\\') back = '/';
+    // Only paths on this host: never "//other.example" or "/\other.example". Browsers
+    // drop tabs and line breaks from URLs, so "/%09/other.example" would become "//other.example".
+    // eslint-disable-next-line no-control-regex
+    if (back.charAt(0) !== '/' || back.charAt(1) === '/' || /[\\\x00-\x1f\x7f]/.test(back))
+      back = '/';
     const cookies = {};
     cookies[COOKIE] = {
       value: token,

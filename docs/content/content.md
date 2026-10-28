@@ -79,6 +79,15 @@ Root-relative URLs (`/assets/site.css`) and absolute URLs are left as they are. 
 - A complete HTML **document** is published as it is. Only the theme's and the site's stylesheets and scripts are added to its `<head>`, and relative links are rewritten as above.
 - A complete document **with front-matter** opts in to the theme: its `<body>` is wrapped in the layout.
 
+## Raw HTML and trust
+
+Markdown may contain raw HTML, including `<script>` elements, event attributes and `javascript:`
+links. sforge passes them through on purpose: the content of a site is code, like its config.
+Titles, descriptions, tags and other front-matter values are escaped wherever sforge writes them
+(page head, social tags, feeds, sitemap, search index). If pull requests from people you do not
+trust can change `content/`, review them as you would code. The headless check loads pages in
+Chromium with every request outside the local server blocked.
+
 ## Collections, tags and feeds
 
 A collection is a directory of pages listed together, such as a blog:

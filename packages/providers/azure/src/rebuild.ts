@@ -34,6 +34,9 @@ function unavailable(sha: string, reason: string): SforgeError {
  */
 export const rebuildAtCommit: Rebuild = async (sha, context) => {
   const { rootDir } = context;
+  // The sha comes from the deploy history in cloud storage: never pass anything else to git,
+  // where a leading dash would be read as an option.
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) throw unavailable(sha, 'it is not a commit hash');
   let top: string;
   try {
     top = git(rootDir, ['rev-parse', '--show-toplevel']);

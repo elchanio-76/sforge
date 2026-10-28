@@ -142,11 +142,16 @@ export async function checkRendered(options: HeadlessOptions): Promise<Finding[]
       trailingSlash: options.trailingSlash,
     });
     const baseUrl = server.url;
+    const origin = new URL(baseUrl).origin;
     for (const mode of MODES) {
-      contexts.push({
-        name: mode.name,
-        context: await browser.newContext({ ...mode.options, reducedMotion: 'reduce' }),
-      });
+      const context = await browser.newContext({ ...mode.options, reducedMotion: 'reduce' });
+      // The pages are the site's own and may come from a pull request: they get no network
+      // beyond the local server (no CDN fonts, no localhost services, no cloud metadata).
+      await context.route(
+        (url) => url.origin !== origin,
+        (route) => route.abort('blockedbyclient'),
+      );
+      contexts.push({ name: mode.name, context });
     }
 
     const findings: Finding[] = [];
