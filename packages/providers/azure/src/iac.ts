@@ -26,7 +26,7 @@ export const STATE_BOOTSTRAP_DIR = terraformDir('state-bootstrap');
 
 type CiConfig = NonNullable<AzureTargetConfig['ci']>;
 
-const AZURERM_PROVIDER = { source: 'hashicorp/azurerm', version: '>= 4.0, < 5.0' };
+const AZURERM_PROVIDER = { source: 'hashicorp/azurerm', version: '>= 4.0, < 5.12' };
 const AZUREAD_PROVIDER = { source: 'hashicorp/azuread', version: '>= 3.0, < 4.0' };
 const TIME_PROVIDER = { source: 'hashicorp/time', version: '>= 0.12, < 1.0' };
 
