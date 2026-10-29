@@ -1,6 +1,6 @@
 {
   "name": "default",
-  "version": "0.3.1-rc.1",
+  "version": "0.3.1",
   "description": "Accessible default staticforge theme",
   "defaultLayout": "page",
   "layouts": ["page", "post", "list", "tag", "tags", "search", "404"],

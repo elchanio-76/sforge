@@ -1,6 +1,6 @@
 {
   "name": "@staticforge/dev-server",
-  "version": "0.3.1-rc.1",
+  "version": "0.3.1",
   "description": "Local preview and live-reloading development server for staticforge",
   "keywords": [
     "staticforge"
