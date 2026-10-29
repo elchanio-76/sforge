@@ -18,7 +18,7 @@ export interface CodeOutput {
   immutable: boolean;
 }
 
-export const CODE = /\.(css|js|mjs|ts|mts)$/i;
+const CODE = /\.(css|js|mjs|ts|mts)$/i;
 const TYPESCRIPT = /\.m?ts$/i;
 
 /**

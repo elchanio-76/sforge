@@ -22,7 +22,7 @@ import { loadProjectConfigAt } from './project.js';
  * The provider of a target; tests inject fakes through the runtime. Providers
  * are loaded on demand: their cloud SDKs would slow down every other command.
  */
-export async function providerFor(runtime: Runtime, target: TargetConfig): Promise<Provider> {
+async function providerFor(runtime: Runtime, target: TargetConfig): Promise<Provider> {
   const injected = runtime.providers?.[target.provider];
   if (injected !== undefined) return injected;
   return target.provider === 'aws'
@@ -31,7 +31,7 @@ export async function providerFor(runtime: Runtime, target: TargetConfig): Promi
 }
 
 /** The DNS provider of a target's `dns`, loaded on demand like the cloud providers. */
-export async function dnsProfileFor(runtime: Runtime, dns: DnsConfig): Promise<DnsProfile> {
+async function dnsProfileFor(runtime: Runtime, dns: DnsConfig): Promise<DnsProfile> {
   const injected = runtime.dns?.[dns.provider];
   if (injected !== undefined) return injected;
   return (await import('@staticforge/cloudflare')).createCloudflareDns();

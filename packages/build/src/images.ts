@@ -10,7 +10,7 @@ import {
 } from '@staticforge/assets';
 
 /** Where image variants are written in the build. */
-export const IMAGE_DIR = '_assets/img';
+const IMAGE_DIR = '_assets/img';
 
 export interface ImageContext extends ImageOptions {
   sizes: string;

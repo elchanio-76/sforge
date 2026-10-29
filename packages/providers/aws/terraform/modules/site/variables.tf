@@ -42,12 +42,6 @@ variable "validation_record_fqdns" {
   default     = null
 }
 
-variable "wait_for_validation" {
-  description = "Wait for the ACM certificate to be validated (false only creates the certificate)."
-  type        = bool
-  default     = true
-}
-
 variable "price_class" {
   type    = string
   default = "PriceClass_100"

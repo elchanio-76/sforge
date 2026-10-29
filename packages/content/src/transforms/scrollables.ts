@@ -3,7 +3,7 @@ import { toString } from 'hast-util-to-string';
 import { SKIP, visit } from 'unist-util-visit';
 
 /** Class of the element tables are wrapped in, which the theme lets scroll sideways. */
-export const TABLE_SCROLL_CLASS = 'table-scroll';
+const TABLE_SCROLL_CLASS = 'table-scroll';
 
 const hasClass = (node: Element, name: string): boolean => {
   const classes = node.properties.className;

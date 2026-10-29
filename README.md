@@ -90,7 +90,7 @@ See [docs/content/content.md](docs/content/content.md) for project layout, URLs,
 - Exit codes: `0` success, `1` the command ran and found failures, `2` usage or config error, `3` internal error.
 - `--non-interactive` (implied when `CI` is set or stdin is not a TTY) never prompts:
   `provision`, `rollback`, `users remove` and `users revoke-sessions` then need `--yes`,
-  `destroy` needs `--confirm <target>`
+  `destroy` needs `--confirm <target>` (typing the name is deliberate: it deletes the site's data)
   (`SF_CONFIRMATION_REQUIRED` otherwise).
 
 ### Commands available so far

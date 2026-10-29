@@ -80,6 +80,12 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
   let state: DevBuildState = { id: 0, ok: false, changed: [], diagnostics: [] };
   let waiters: ((s: DevBuildState) => void)[] = [];
   const retiring = new Set<NodeJS.Timeout>();
+  // Search indexes being written; the scratch directory is removed only after they settle.
+  const indexing = new Set<Promise<void>>();
+  const removeScratch = async () => {
+    await Promise.allSettled([...indexing]);
+    rmSync(scratch, { recursive: true, force: true });
+  };
 
   const publish = (cssOnly: boolean) => {
     const liveState: LiveState = {
@@ -129,7 +135,8 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
       servedDir = outDir;
       const timer = setTimeout(() => {
         retiring.delete(timer);
-        rmSync(previous, { recursive: true, force: true });
+        // The previous build's search index may still be being written into it.
+        rmSync(previous, { recursive: true, force: true, maxRetries: 3 });
       }, RETIRE_AFTER_MS);
       timer.unref();
       retiring.add(timer);
@@ -152,14 +159,19 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
       state = { id, ok: false, changed, diagnostics: [], error: toSforgeError(error).toJSON() };
     }
     publish(changed.length > 0 && changed.every((path) => path.endsWith('.css')));
-    void writeSearchIndex?.().catch((error: unknown) => {
-      // A newer build may already have replaced (and removed) this one.
-      if (servedDir === outDir) {
-        logger?.warn(
-          `Search index failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    });
+    if (writeSearchIndex !== undefined) {
+      const indexed = writeSearchIndex()
+        .catch((error: unknown) => {
+          // A newer build may already have replaced (and removed) this one.
+          if (servedDir === outDir) {
+            logger?.warn(
+              `Search index failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        })
+        .finally(() => indexing.delete(indexed));
+      indexing.add(indexed);
+    }
   };
 
   const finish = () => {
@@ -181,12 +193,15 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
   let building = false;
   let queued = new Set<string>();
   let timer: NodeJS.Timeout | undefined;
+  let closed = false;
+  // The running rebuild loop: close() waits for it, or it would write into a removed scratch directory.
+  let loop: Promise<void> | undefined;
 
   // Serialize builds: changes during a build schedule exactly one more.
   const run = async () => {
     if (building) return;
     building = true;
-    while (queued.size > 0) {
+    while (queued.size > 0 && !closed) {
       const wait = lastChange + quietMs - Date.now();
       if (wait > 0) {
         await new Promise((r) => setTimeout(r, wait));
@@ -203,7 +218,10 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
     lastChange = Date.now();
     queued.add(relative(rootDir, path).split(sep).join('/'));
     clearTimeout(timer);
-    timer = setTimeout(() => void run(), quietMs);
+    timer = setTimeout(() => {
+      if (closed) return;
+      loop ??= run().finally(() => (loop = undefined));
+    }, quietMs);
   };
 
   const outDir = resolve(rootDir, loaded.config.build.outDir);
@@ -232,7 +250,7 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
     await watcher.close();
     live.close();
     await pool?.close();
-    rmSync(scratch, { recursive: true, force: true });
+    await removeScratch();
     throw error;
   }
 
@@ -244,13 +262,15 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
     },
     nextBuild: () => new Promise((resolveWaiter) => waiters.push(resolveWaiter)),
     close: async () => {
+      closed = true;
       clearTimeout(timer);
       for (const t of retiring) clearTimeout(t);
       await watcher.close();
+      await loop;
       live.close();
       await server.close();
       await pool?.close();
-      rmSync(scratch, { recursive: true, force: true });
+      await removeScratch();
     },
   };
 }

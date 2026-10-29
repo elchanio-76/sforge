@@ -29,7 +29,7 @@ export interface Outcome {
   live?: () => unknown;
 }
 
-export interface CommandResult<T> {
+interface CommandResult<T> {
   data: T;
   /** Defaults to true. False marks a completed run that found failures (exit code 1). */
   ok?: boolean;
@@ -44,7 +44,7 @@ export interface CommandResult<T> {
   live?: () => T;
 }
 
-export interface ActionInput {
+interface ActionInput {
   /** Positional arguments in declaration order. */
   args: unknown[];
   /** The command's own (non-global) options. */
@@ -54,7 +54,7 @@ export interface ActionInput {
 export type Handler<T> = (ctx: CommandContext, input: ActionInput) => Promise<CommandResult<T>>;
 
 /** "config validate" for `sforge config validate`. */
-export function commandPath(command: Command): string {
+function commandPath(command: Command): string {
   const names: string[] = [];
   for (let c: Command | null = command; c?.parent; c = c.parent) names.unshift(c.name());
   return names.join(' ');

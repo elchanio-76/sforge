@@ -21,7 +21,7 @@ interface Visit {
 }
 
 /** Every element with its ancestors, in document order. */
-export function elementsOf(tree: Root): Visit[] {
+function elementsOf(tree: Root): Visit[] {
   const out: Visit[] = [];
   const walk = (children: RootContent[], ancestors: Element[]): void => {
     for (const child of children) {
@@ -49,7 +49,7 @@ export function idsOf(tree: Root): Set<string> {
 }
 
 /** A short CSS path like `#main > article > p:nth-child(3) > img`. */
-export function selectorOf({ node, ancestors }: Visit): string {
+function selectorOf({ node, ancestors }: Visit): string {
   const parts: string[] = [];
   const chain = [...ancestors, node];
   for (let i = chain.length - 1; i >= 0; i--) {
