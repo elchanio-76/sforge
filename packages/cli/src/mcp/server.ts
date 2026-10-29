@@ -101,13 +101,14 @@ function argv(command: string[], flags: Flags = {}, positionals: string[] = []):
 
 const text = (s: string) => ({ type: 'text' as const, text: s });
 
-function errorResult(code: string, message: string, extra?: unknown): CallToolResult {
+function errorResult(
+  code: string,
+  message: string,
+  extra: unknown = { code, message },
+): CallToolResult {
   return {
     isError: true,
-    content: [
-      text(`${code}: ${message}`),
-      ...(extra !== undefined ? [text(JSON.stringify(extra))] : []),
-    ],
+    content: [text(`${code}: ${message}`), text(JSON.stringify(extra))],
   };
 }
 
@@ -779,6 +780,30 @@ export function createSforgeMcp(options: SforgeMcpOptions): SforgeMcp {
             ]),
             ctx,
           ),
+          'text',
+        );
+      },
+    );
+
+    tool(
+      'sforge_users_revoke_sessions',
+      {
+        title: 'Sign everyone out of a private site',
+        description:
+          'End every sign-in to a private AWS target by replacing its session key; users sign in again. Use it after sforge_users_remove when access must end now. SF_UNSUPPORTED on Azure, which keeps its own sessions. Ask the user, then pass confirm: true.',
+        input: z.object({ target, confirm }),
+        data: 'users revoke-sessions',
+        annotations: CLOUD_WRITE,
+      },
+      async (args, ctx) => {
+        if (args.confirm !== true) {
+          return errorResult(
+            ErrorCode.ConfirmationRequired,
+            `Revoking sessions signs everyone out of "${args.target}". Ask the user, then call again with confirm: true.`,
+          );
+        }
+        return toolResult(
+          await command(argv(['users', 'revoke-sessions'], { '--yes': true }, [args.target]), ctx),
           'text',
         );
       },
