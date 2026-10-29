@@ -1,6 +1,6 @@
 {
   "name": "@staticforge/iac",
-  "version": "0.3.0",
+  "version": "0.3.1-rc.1",
   "description": "OpenTofu/Terraform engine resolution, workspace generation and runner for staticforge",
   "keywords": [
     "staticforge",
