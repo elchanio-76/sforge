@@ -660,7 +660,8 @@ Found live:
 
 - Domain mode: Firebase asks for one CNAME on a subdomain, and an `_acme-challenge` TXT. Provision with a project that already has Firebase works through the import block. The certificate took longer than the 30-minute wait in the one run that recorded it; HTTPS worked within the next few minutes.
 - A second plan right after provision showed changes in one domain run of two (the plan's contents were not recorded). The ACME TXT came from `cert.verification.dns`, which Google describes as a way to get a certificate *before* pointing traffic at Hosting, so it is no longer managed: sforge creates the routing record in the same apply. Only `required_dns_updates` goes to DNS now.
-- A first preview returned 404 for the whole two-minute wait in one run of three (the body was not recorded) and worked in the others; a second preview in that run was fine. The test now waits 10 minutes on Firebase and prints the first answer and how long it took.
+- With only the CNAME, the certificate is still issued and a second plan is clean. Timing: about 37 minutes from the start of provision, so the wait is now 45 minutes (30 expired in both runs that recorded it). For a while after the first HTTPS answer, some edges still present `*.firebaseapp.com`: documented, and the test now requires stable answers on fresh connections.
+- **Intermittent preview 404, cause unknown.** A channel returned 404 for at least two minutes in two of three domain runs (`pr-1` at `/`, then `pr-2` at `/about`), while other channels answered at once. Neither body was recorded. Matters because the URL goes straight into a PR comment. The test now waits 10 minutes and prints the first answer, cache headers and time to recover.
 
 To settle live (assumptions the mocked tests cannot check):
 - `maxVersions` does not let preview versions push production ones out (not exercised: the cycle has too few versions).

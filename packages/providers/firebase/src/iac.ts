@@ -38,8 +38,8 @@ const CUSTOM_DOMAIN = 'module.site.google_firebase_hosting_custom_domain.this';
 const FIREBASE_PROJECT = 'module.site.google_firebase_project.this';
 
 const DOMAIN_POLL_MS = 15_000;
-/** Firebase usually has the certificate within minutes, though it allows itself a day. */
-const CERTIFICATE_TIMEOUT_MS = 30 * 60_000;
+/** The certificate took over half an hour in the live runs; Firebase allows itself a day. */
+const CERTIFICATE_TIMEOUT_MS = 45 * 60_000;
 const OWNERSHIP_TIMEOUT_MS = 60 * 60_000;
 
 const ACTIVE_CERTIFICATES = new Set(['CERT_ACTIVE', 'CERT_EXPIRING_SOON']);

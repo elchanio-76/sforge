@@ -1,4 +1,5 @@
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { get } from 'node:https';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -26,6 +27,40 @@ import {
 const provider = process.env.SFORGE_LIVE as 'aws' | 'azure' | 'firebase' | undefined;
 const parentDomain = process.env.SFORGE_LIVE_DOMAIN;
 const dnsZone = process.env.SFORGE_LIVE_DNS_ZONE;
+
+/** A request on a connection of its own: fails when this edge has no valid certificate yet. */
+const freshRequest = (url: string) =>
+  new Promise<void>((resolve, reject) => {
+    get(url, { agent: false }, (response) => {
+      response.resume();
+      resolve();
+    }).on('error', reject);
+  });
+
+/**
+ * Poll a page of a new preview until it is served, recording the first refusal and how long
+ * it took: Firebase's own "Site Not Found" and the site's 404 page mean different things.
+ */
+async function servedPreview(pageUrl: string, timeoutMs: number): Promise<Response> {
+  const started = Date.now();
+  let reported = false;
+  const response = await eventually(async () => {
+    const answer = await fetch(pageUrl, { redirect: 'manual' });
+    if (answer.status !== 200) {
+      const body = (await answer.text()).replace(/\s+/g, ' ').slice(0, 200);
+      const headers = ['cache-control', 'age', 'x-cache', 'x-served-by']
+        .map((name) => `${name}=${answer.headers.get(name)}`)
+        .join(' ');
+      const failure = `${pageUrl} → ${answer.status} (${headers}): ${body}`;
+      if (!reported) process.stderr.write(`First answer: ${failure}\n`);
+      reported = true;
+      throw new Error(failure);
+    }
+    return answer;
+  }, timeoutMs);
+  process.stderr.write(`${pageUrl} served after ${Math.round((Date.now() - started) / 1000)}s\n`);
+  return response;
+}
 
 // SFORGE_LIVE_AUTH runs the private-site cycle instead (live-auth.integration.test.ts).
 describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefined)(
@@ -185,6 +220,15 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
       process.stderr.write(
         `Served after a further ${Math.round((Date.now() - waiting) / 1000)}s\n`,
       );
+      if (domain !== undefined) {
+        // One answer proves one edge: the certificate reaches the others a little later.
+        await eventually(async () => {
+          for (let i = 0; i < 6; i++) {
+            await freshRequest(`${url}/`);
+            await new Promise((r) => setTimeout(r, 5_000));
+          }
+        }, 15 * MINUTE);
+      }
       const html = await home.text();
       expect(html).toContain('<html lang="en"');
       if (domain !== undefined) {
@@ -303,26 +347,9 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
         requireUrl();
         const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');
         const previewUrl = String(preview.url).replace(/\/$/, '');
-        const started = Date.now();
-        let reported = false;
-        // Firebase's own "Site Not Found" and the site's 404 page mean different things.
-        const html = await eventually(
-          async () => {
-            const response = await fetch(`${previewUrl}/`);
-            if (response.status !== 200) {
-              const body = (await response.text()).replace(/\s+/g, ' ').slice(0, 200);
-              const failure = `${previewUrl}/ → ${response.status}: ${body}`;
-              if (!reported) process.stderr.write(`First answer: ${failure}\n`);
-              reported = true;
-              throw new Error(failure);
-            }
-            return response.text();
-          },
-          provider === 'firebase' ? 10 * MINUTE : 2 * MINUTE,
-        );
-        process.stderr.write(
-          `Preview served after ${Math.round((Date.now() - started) / 1000)}s\n`,
-        );
+        const html = await (
+          await servedPreview(`${previewUrl}/`, provider === 'firebase' ? 10 * MINUTE : 2 * MINUTE)
+        ).text();
         if (provider === 'firebase') {
           // The build knew the channel's URL, which only Firebase can name.
           expect(html).toContain(`<link rel="canonical" href="${previewUrl}/"`);
@@ -353,11 +380,7 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
         try {
           const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-2', '--no-headless');
           const previewUrl = String(preview.url).replace(/\/$/, '');
-          const page = await eventually(async () => {
-            const response = await fetch(`${previewUrl}/about`, { redirect: 'manual' });
-            if (response.status !== 200) throw new Error(`/about → ${response.status}`);
-            return response;
-          });
+          const page = await servedPreview(`${previewUrl}/about`, 10 * MINUTE);
           expect(page.headers.get('content-type')).toContain('text/html');
           const redirect = await fetch(`${previewUrl}/about/`, { redirect: 'manual' });
           expect([301, 302, 307, 308]).toContain(redirect.status);
