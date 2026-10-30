@@ -289,6 +289,7 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
     it.runIf(provider === 'azure' || provider === 'firebase')(
       'deploys and removes a preview environment',
       async () => {
+        requireUrl();
         const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');
         const previewUrl = String(preview.url).replace(/\/$/, '');
         const html = await eventually(async () => {
@@ -315,6 +316,7 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
     it.runIf(provider === 'firebase')(
       'serves URLs without a trailing slash when the build asks for that',
       async () => {
+        requireUrl();
         // A preview is a version with its own serving configuration, so production stays as it is.
         const path = join(dir, 'staticforge.config.json');
         const original = readFileSync(path, 'utf8');

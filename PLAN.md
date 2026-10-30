@@ -606,7 +606,7 @@ A third provider, Firebase Hosting, for public sites. Decisions (made with the u
 
 ### B. IaC
 - Backend: `IacBackend.type` gains `'gcs'` (native locking).
-- `state-bootstrap`: bucket `sforge-state-<project>` (uniform access, public access prevention enforced, versioning, soft delete, `prevent_destroy`); the caller gets `storage.objectAdmin`.
+- `state-bootstrap`: bucket `sforge-state-<project>` (uniform access, public access prevention enforced, versioning, soft delete, `prevent_destroy`); the caller gets `storage.objectAdmin` (as built: no binding, see G).
 - `modules/site` (`google` + `google-beta`): `google_project_service` for firebase, firebasehosting, iam, iamcredentials, sts, serviceusage (`disable_on_destroy = false`); `google_firebase_project`; `google_firebase_hosting_site`; with `domain`, `google_firebase_hosting_custom_domain` (beta, `cert_preference = GROUPED`).
 - DNS: the records Firebase wants (`required_dns_updates.desired`: TXT, A, or CNAME for subdomains, plus ACME TXT) are known only once the domain resource exists. A pre-phase applies the domain with `wait_dns_verification = false` and reads them; the full apply creates them through Cloudflare (the `records` module gains A/AAAA and several values per name) or prints them (`--no-wait`).
 - CI (`ci.tf`): a Workload Identity pool and GitHub OIDC provider whose `attribute_condition` pins `repository_id` (immutable subjects, see M9); a service account with `roles/firebasehosting.admin` on the project (Hosting has no per-site role; documented); `storage.objectUser` on the state bucket with an IAM condition on its own object prefixes; `workloadIdentityUser` for the branch, environment and pull-request principal sets. Outputs `ci_workload_identity_provider`, `ci_service_account`.
@@ -651,6 +651,9 @@ As built, differing from A–D:
 - The Cloudflare records have keys Firebase decides, unknown until the domain exists, and a map's keys must be known when planning. `provision` creates the domain first (the pre-phase). A plan with no pre-phase (`--diff`, status, destroy) leaves the DNS module out until the domain exists; `--diff` on a new target logs that it cannot show them.
 - `postApply` waits up to 30 minutes for the certificate, then returns a notice instead of failing: the site already works at `*.web.app`.
 - `immutableRoutes` and `hstsValue` moved from the Azure provider to `provider-api`, to be shared. `sforge init` gains `--project`.
+
+Found live:
+- `google_client_openid_userinfo` returns a null email with `user_project_override`: Google's OpenID endpoint refuses the quota project header (403 `USER_PROJECT_DENIED`) and the provider hides the error. So `state-bootstrap` no longer gives the caller `storage.objectAdmin`: project owners and editors get the objects through a new bucket's default legacy roles, which bootstrapping proves when it moves its state in.
 
 To settle live (assumptions the mocked tests cannot check):
 - A later header rule overrides an earlier one for the same header (`**` sets revalidation, later rules set `immutable`; the live test checks both).

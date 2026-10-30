@@ -1,12 +1,12 @@
 # The Cloud Storage bucket that holds the state of a project's targets. Created
 # once per Google Cloud project by `sforge provision --bootstrap-state`, then
 # kept: it outlives every target, and destroying it would orphan their state.
-
-data "google_client_openid_userinfo" "caller" {}
-
-locals {
-  caller_is_service_account = endswith(data.google_client_openid_userinfo.caller.email, ".gserviceaccount.com")
-}
+#
+# Access needs no binding here: a new bucket gives the project's owners and
+# editors its objects through the default legacy roles. (Binding the caller
+# explicitly does not work anyway: google_client_openid_userinfo returns a null
+# email with user_project_override, because Google's OpenID endpoint refuses the
+# quota project header and the provider hides the error.)
 
 resource "google_project_service" "storage" {
   project            = var.project
@@ -46,12 +46,4 @@ resource "google_storage_bucket" "state" {
   }
 
   depends_on = [google_project_service.storage]
-}
-
-# Whoever bootstraps can read and write state: with uniform access, being a
-# project owner does not reliably cover objects.
-resource "google_storage_bucket_iam_member" "caller" {
-  bucket = google_storage_bucket.state.name
-  role   = "roles/storage.objectAdmin"
-  member = "${local.caller_is_service_account ? "serviceAccount" : "user"}:${data.google_client_openid_userinfo.caller.email}"
 }

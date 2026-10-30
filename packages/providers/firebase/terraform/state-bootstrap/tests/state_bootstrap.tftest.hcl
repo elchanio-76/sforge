@@ -1,13 +1,7 @@
-# Plans and applies the module against a mocked provider, so no Google Cloud
-# project is needed. Run with `tofu test` (or `terraform test`).
+# Plans the module against a mocked provider, so no Google Cloud project is
+# needed. Run with `tofu test` (or `terraform test`).
 
-mock_provider "google" {
-  mock_data "google_client_openid_userinfo" {
-    defaults = {
-      email = "owner@example.com"
-    }
-  }
-}
+mock_provider "google" {}
 
 variables {
   project = "my-project"
@@ -36,31 +30,15 @@ run "the_bucket_is_private_versioned_and_kept" {
   }
 }
 
-run "a_user_gets_access_to_the_objects" {
+run "the_location_can_be_chosen" {
   command = plan
 
-  assert {
-    condition     = google_storage_bucket_iam_member.caller.member == "user:owner@example.com"
-    error_message = "The caller is a user."
-  }
-  assert {
-    condition     = google_storage_bucket_iam_member.caller.role == "roles/storage.objectAdmin"
-    error_message = "The caller needs to read and write objects."
-  }
-}
-
-run "a_service_account_gets_access_too" {
-  command = plan
-
-  override_data {
-    target = data.google_client_openid_userinfo.caller
-    values = {
-      email = "deploy@my-project.iam.gserviceaccount.com"
-    }
+  variables {
+    location = "europe-north1"
   }
 
   assert {
-    condition     = google_storage_bucket_iam_member.caller.member == "serviceAccount:deploy@my-project.iam.gserviceaccount.com"
-    error_message = "The caller is a service account."
+    condition     = google_storage_bucket.state.location == "europe-north1"
+    error_message = "The configured location must be used."
   }
 }
