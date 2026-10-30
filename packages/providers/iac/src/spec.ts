@@ -3,7 +3,7 @@ import type { DnsConfig, Logger, SforgeConfig, TargetConfig } from '@staticforge
 /** Where OpenTofu/Terraform keeps a workspace's state. */
 export interface IacBackend {
   /** `local` writes `terraform.tfstate` into the workspace (experiments only). */
-  type: 's3' | 'azurerm' | 'local';
+  type: 's3' | 'azurerm' | 'gcs' | 'local';
   config: Record<string, unknown>;
 }
 
@@ -59,6 +59,15 @@ export interface IacSpec {
   backend: IacBackend;
   /** Extra environment variables for the engine. */
   env?: Record<string, string>;
+  /** `import` blocks: adopt resources that exist already instead of creating them. */
+  imports?: IacImport[];
+}
+
+/** An `import` block of a generated workspace. */
+export interface IacImport {
+  /** Resource address, e.g. `module.site.google_firebase_project.this`. */
+  to: string;
+  id: string;
 }
 
 /** The remote state backend of a target, and how to create it. */
@@ -85,8 +94,10 @@ export interface ProfileInput {
   /**
    * `outputs`: the workspace is only used to read outputs (e.g. a deploy in
    * CI), so lookups that only affect inputs can be skipped.
+   * `plan`: `provision --diff`, which plans without running the pre-phase.
+   * `provision`: an apply, with its pre-phase. Unset: anything else (status, destroy).
    */
-  purpose?: 'provision' | 'outputs';
+  purpose?: 'provision' | 'plan' | 'outputs';
   /** The DNS provider of `target.dns`, when it is set. */
   dns?: DnsProfile;
 }
@@ -113,6 +124,8 @@ export interface PreparedTarget {
     describe(outputs: Record<string, unknown>): string | undefined;
     wait?(outputs: Record<string, unknown>, logger: Logger): Promise<void>;
   };
+  /** `import` blocks for `provision` only: destroy and status plans must not adopt anything. */
+  imports?: IacImport[];
   /**
    * Run after every provision that leaves the infrastructure up to date (an
    * apply, or a plan without changes), e.g. to seed a secret that must not

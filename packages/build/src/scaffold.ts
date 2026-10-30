@@ -29,7 +29,9 @@ export interface InitOptions {
   language?: string;
   format?: 'ts' | 'json' | 'yaml';
   /** Add a "staging" deploy target for this provider. */
-  provider?: 'aws' | 'azure';
+  provider?: 'aws' | 'azure' | 'firebase';
+  /** Google Cloud project of a Firebase target. */
+  project?: string | undefined;
   /** AWS region or Azure location for the target. */
   region?: string;
   /** Overwrite existing files. */
@@ -126,6 +128,10 @@ export function initProject(options: InitOptions): ScaffoldResult & { configPath
         resourceGroup: `rg-${slugify(name)}`,
         location: options.region ?? 'westeurope',
       },
+    };
+  } else if (options.provider === 'firebase') {
+    config.targets = {
+      staging: { provider: 'firebase', project: options.project ?? 'my-project-id' },
     };
   }
   validateConfig(config, 'generated config'); // guard against scaffolding drifting from the schema

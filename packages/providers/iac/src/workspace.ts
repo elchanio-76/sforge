@@ -127,6 +127,10 @@ export function writeWorkspace(options: WriteWorkspaceOptions): string[] {
       variable: Object.fromEntries(Object.keys(variables).map((name) => [name, {}])),
     }),
     module: blocks,
+    ...(spec.imports !== undefined &&
+      spec.imports.length > 0 && {
+        import: spec.imports.map(({ to, id }) => ({ to, id })),
+      }),
     ...((spec.outputs.length > 0 || spec.additionalOutputs !== undefined) && {
       output: {
         ...Object.fromEntries(

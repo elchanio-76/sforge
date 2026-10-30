@@ -23,6 +23,9 @@ updates:
       - /packages/providers/azure/terraform/modules/ci-oidc
       - /packages/providers/azure/terraform/modules/site
       - /packages/providers/azure/terraform/state-bootstrap
+      - /packages/providers/firebase/terraform/modules/ci-oidc
+      - /packages/providers/firebase/terraform/modules/site
+      - /packages/providers/firebase/terraform/state-bootstrap
       - /packages/providers/cloudflare/terraform/modules/records
     schedule:
       interval: weekly

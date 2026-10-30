@@ -15,15 +15,15 @@ import {
 /**
  * The full cycle against a real cloud: provision → deploy twice → HTTP checks →
  * rollback → destroy. Creates real (cheap) resources, so it only runs with
- * SFORGE_LIVE=aws|azure and SFORGE_LIVE_CONFIRM set to the account or
- * subscription id it will use (`pnpm test:live`; see docs/content/deploy.md).
+ * SFORGE_LIVE=aws|azure|firebase and SFORGE_LIVE_CONFIRM set to the account,
+ * subscription or project id it will use (`pnpm test:live`; see docs/content/deploy.md).
  *
  * With SFORGE_LIVE_DOMAIN (a parent such as aws.sforge.example.com) and
  * SFORGE_LIVE_DNS_ZONE (its Cloudflare zone), the target gets the custom domain
  * t-<id>.<parent> with records in Cloudflare (CLOUDFLARE_API_TOKEN), and on AWS
  * previews on *.p-<id>.<parent>.
  */
-const provider = process.env.SFORGE_LIVE as 'aws' | 'azure' | undefined;
+const provider = process.env.SFORGE_LIVE as 'aws' | 'azure' | 'firebase' | undefined;
 const parentDomain = process.env.SFORGE_LIVE_DOMAIN;
 const dnsZone = process.env.SFORGE_LIVE_DNS_ZONE;
 
@@ -49,13 +49,14 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
     let dir = '';
     let url = '';
     let provisioned = false;
+    let account = '';
     /** The tests after the first need its URL: fail at once instead of polling nothing. */
     const requireUrl = () => {
       if (url === '') throw new Error('Provisioning failed (see the first test); skipping');
     };
 
     beforeAll(async () => {
-      const account = await cloudAccount(provider!);
+      account = await cloudAccount(provider!);
       if (process.env.SFORGE_LIVE_CONFIRM !== account) {
         throw new Error(
           `This test creates and destroys resources in ${provider} account ${account}. ` +
@@ -89,14 +90,17 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
                     region: process.env.SFORGE_LIVE_REGION ?? 'eu-north-1',
                     ...custom,
                   }
-                : {
-                    provider: 'azure',
-                    resourceGroup: `rg-sforge-live-${id}`,
-                    location: 'eastus2',
-                    sku: 'Free',
-                    state: { location: 'northeurope' },
-                    ...custom,
-                  },
+                : provider === 'firebase'
+                  ? // The site ID comes from iac.name, so it is new each run: deleted ones stay taken.
+                    { provider: 'firebase', project: account, ...custom }
+                  : {
+                      provider: 'azure',
+                      resourceGroup: `rg-sforge-live-${id}`,
+                      location: 'eastus2',
+                      sku: 'Free',
+                      state: { location: 'northeurope' },
+                      ...custom,
+                    },
           },
         }),
       );
@@ -137,7 +141,12 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
       if (domain !== undefined && dnsZone !== undefined) {
         expect(url).toBe(`https://${domain}`);
         const records = await cloudflareRecords(dnsZone, id);
-        expect(records).toContain(`${domain} CNAME`);
+        if (provider === 'firebase') {
+          // Firebase names the records itself: routing and ownership on the domain.
+          expect(records.filter((r) => r.startsWith(`${domain} `)).length).toBeGreaterThan(0);
+        } else {
+          expect(records).toContain(`${domain} CNAME`);
+        }
         if (provider === 'aws') {
           // Certificate validation for the domain and the preview wildcard, and the wildcard itself.
           expect(records).toContain(`*.${previewDomain} CNAME`);
@@ -189,6 +198,31 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
       const css = await fetch(`${url}/assets/theme/css/theme.css`);
       expect(css.headers.get('content-type')).toContain('text/css');
 
+      if (provider === 'firebase') {
+        // A later rule must override the cache class of the rule that covers everything.
+        const manifest = JSON.parse(
+          readFileSync(join(dir, 'dist', '.sforge', 'build-manifest.json'), 'utf8'),
+        ) as { files: Record<string, { cache: string }> };
+        const immutable = Object.keys(manifest.files).find(
+          (path) => manifest.files[path]!.cache === 'immutable' && !path.startsWith('.'),
+        );
+        if (immutable === undefined) throw new Error('The example has no fingerprinted files');
+        const cached = await fetch(`${url}/${immutable}`);
+        expect(cached.status).toBe(200);
+        expect(cached.headers.get('cache-control')).toContain('immutable');
+        expect(cached.headers.get('x-content-type-options')).toBe('nosniff');
+
+        // WebAssembly only where Pagefind needs it.
+        const search = await fetch(`${url}/search/`);
+        expect(search.status).toBe(200);
+        expect(search.headers.get('content-security-policy')).toContain('wasm-unsafe-eval');
+        expect(home.headers.get('content-security-policy')).not.toContain('wasm-unsafe-eval');
+
+        // A trailing slash is for pages: files stay where they are.
+        const file = await fetch(`${url}/assets/theme/css/theme.css`, { redirect: 'manual' });
+        expect(file.status).toBe(200);
+      }
+
       if (provider === 'aws') {
         // The bucket is private: only CloudFront may read it.
         const status = await sforge(dir, 'status', target);
@@ -207,7 +241,7 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
       commit(dir, 'v2');
 
       const second = await sforge(dir, 'deploy', target, '--no-headless');
-      if (provider === 'aws') expect(second.copied).toBeGreaterThan(0);
+      if (provider !== 'azure') expect(second.copied).toBeGreaterThan(0);
       await eventually(async () => {
         const text = await (await fetch(`${url}/about/`)).text();
         if (!text.includes(`Live marker ${id}`)) throw new Error('the change is not live yet');
@@ -252,14 +286,62 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
       },
     );
 
-    it.runIf(provider === 'azure')('deploys and removes a preview environment', async () => {
-      const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');
-      await eventually(async () => {
-        const response = await fetch(`${String(preview.url).replace(/\/$/, '')}/`);
-        if (response.status !== 200) throw new Error(`preview → ${response.status}`);
-      });
-      const removed = await sforge(dir, 'preview-destroy', target, 'pr-1');
-      expect(removed.existed).toBe(true);
-    });
+    it.runIf(provider === 'azure' || provider === 'firebase')(
+      'deploys and removes a preview environment',
+      async () => {
+        const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');
+        const previewUrl = String(preview.url).replace(/\/$/, '');
+        const html = await eventually(async () => {
+          const response = await fetch(`${previewUrl}/`);
+          if (response.status !== 200) throw new Error(`preview → ${response.status}`);
+          return response.text();
+        });
+        if (provider === 'firebase') {
+          // The build knew the channel's URL, which only Firebase can name.
+          expect(html).toContain(`<link rel="canonical" href="${previewUrl}/"`);
+          expect(html).toContain('name="robots" content="noindex"');
+        }
+        const removed = await sforge(dir, 'preview-destroy', target, 'pr-1');
+        expect(removed.existed).toBe(true);
+        if (provider === 'firebase') {
+          await eventually(async () => {
+            const status = (await fetch(`${previewUrl}/`)).status;
+            if (status === 200) throw new Error('the removed preview is still served');
+          });
+        }
+      },
+    );
+
+    it.runIf(provider === 'firebase')(
+      'serves URLs without a trailing slash when the build asks for that',
+      async () => {
+        // A preview is a version with its own serving configuration, so production stays as it is.
+        const path = join(dir, 'staticforge.config.json');
+        const original = readFileSync(path, 'utf8');
+        writeFileSync(
+          path,
+          JSON.stringify({ ...JSON.parse(original), build: { trailingSlash: 'never' } }),
+        );
+        try {
+          const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-2', '--no-headless');
+          const previewUrl = String(preview.url).replace(/\/$/, '');
+          const page = await eventually(async () => {
+            const response = await fetch(`${previewUrl}/about`, { redirect: 'manual' });
+            if (response.status !== 200) throw new Error(`/about → ${response.status}`);
+            return response;
+          });
+          expect(page.headers.get('content-type')).toContain('text/html');
+          const redirect = await fetch(`${previewUrl}/about/`, { redirect: 'manual' });
+          expect([301, 302, 307, 308]).toContain(redirect.status);
+          expect(redirect.headers.get('location')).toMatch(/\/about$/);
+          const missing = await fetch(`${previewUrl}/no/such/page`);
+          expect(missing.status).toBe(404);
+          expect(await missing.text()).toContain('there is no page at this address');
+        } finally {
+          writeFileSync(path, original);
+          await sforge(dir, 'preview-destroy', target, 'pr-2');
+        }
+      },
+    );
   },
 );

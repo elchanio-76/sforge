@@ -20,9 +20,11 @@ export function registerInitCommand(program: Command, runtime: Runtime): void {
       new Option('--provider <provider>', 'add a "staging" deploy target').choices([
         'aws',
         'azure',
+        'firebase',
       ]),
     )
     .option('--region <region>', 'AWS region or Azure location for the target')
+    .option('--project <id>', 'Google Cloud project ID for a Firebase target')
     .option('--force', 'overwrite existing starter files')
     .action(
       action(runtime, async (ctx, { args, options }) => {
@@ -34,8 +36,9 @@ export function registerInitCommand(program: Command, runtime: Runtime): void {
           baseUrl: options.baseUrl as string,
           language: options.language as string,
           format: options.format as 'ts' | 'json' | 'yaml',
-          provider: options.provider as 'aws' | 'azure' | undefined,
+          provider: options.provider as 'aws' | 'azure' | 'firebase' | undefined,
           region: options.region as string | undefined,
+          project: options.project as string | undefined,
           force: options.force === true,
         });
 

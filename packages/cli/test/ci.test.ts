@@ -208,6 +208,54 @@ describe('sforge ci init', () => {
     ]);
   });
 
+  it('signs in to Firebase targets with Workload Identity, and previews on channels', async () => {
+    const { root, dir } = repository({
+      web: {
+        provider: 'firebase',
+        project: 'my-project-id',
+        ci: { repo, branches: ['main'] },
+      },
+    });
+    mkdirSync(join(dir, '.sforge', 'state'), { recursive: true });
+    writeFileSync(
+      join(dir, '.sforge', 'state', 'web.json'),
+      JSON.stringify({
+        target: 'web',
+        provider: 'firebase',
+        engine: 'tofu',
+        updatedAt: '',
+        outputs: {
+          ci_workload_identity_provider:
+            'projects/1/locations/global/workloadIdentityPools/p/providers/github',
+          ci_service_account: 'ci@my-project-id.iam.gserviceaccount.com',
+        },
+      }),
+    );
+
+    const result = await sforge(['ci', 'init', '--json'], dir);
+    expect(result.exitCode).toBe(0);
+    expect(result.json().data.targets[0]).toMatchObject({ provider: 'firebase', previews: true });
+    expect(result.json().data.commands).toEqual([
+      'gh variable set SFORGE_WEB_WORKLOAD_IDENTITY_PROVIDER --repo acme/docs --body projects/1/locations/global/workloadIdentityPools/p/providers/github',
+      'gh variable set SFORGE_WEB_SERVICE_ACCOUNT --repo acme/docs --body ci@my-project-id.iam.gserviceaccount.com',
+    ]);
+
+    const site = workflow(root, 'sforge.yml');
+    const login = site.jobs['deploy-web']!.steps.find((s) =>
+      s.uses?.includes('google-github-actions/auth'),
+    );
+    expect(login?.with).toEqual({
+      workload_identity_provider: '${{ vars.SFORGE_WEB_WORKLOAD_IDENTITY_PROVIDER }}',
+      service_account: '${{ vars.SFORGE_WEB_SERVICE_ACCOUNT }}',
+    });
+    expect(Object.keys(site.jobs)).toContain('preview-web');
+    expect(site.jobs['deploy-web']!.permissions).toMatchObject({ 'id-token': 'write' });
+    expect(Object.keys(workflow(root, 'sforge-preview-cleanup.yml').jobs)).toEqual(['remove-web']);
+    // Firebase rolls back by releasing a version again, so it needs no git history.
+    const rollback = workflow(root, 'sforge-rollback.yml').jobs['rollback-web']!;
+    expect(rollback.steps[0]!.with).toBeUndefined();
+  });
+
   it('prints the variable commands once the targets are provisioned', async () => {
     const { dir } = repository();
     const cache = (target: string, outputs: Record<string, string>) => {

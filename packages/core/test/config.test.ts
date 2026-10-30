@@ -67,6 +67,36 @@ describe('validateConfig', () => {
     expect(config.targets.prod).toMatchObject({ provider: 'azure', sku: 'Free' });
   });
 
+  it('applies the defaults of a Firebase target', () => {
+    const config = validateConfig({
+      site: { title: 'T', baseUrl: 'https://example.com' },
+      targets: { web: { provider: 'firebase', project: 'my-project-id' } },
+    });
+    expect(config.targets.web).toMatchObject({
+      provider: 'firebase',
+      project: 'my-project-id',
+      retainVersions: 10,
+      previewTtlDays: 7,
+      privateDns: false,
+      state: { location: 'EU' },
+    });
+  });
+
+  it.each([
+    ['a project ID that is too short', { project: 'abc' }],
+    ['a project ID with capitals', { project: 'My-Project' }],
+    ['a site ID that is too long', { project: 'my-project-id', site: 'a'.repeat(31) }],
+    ['a preview lifetime Firebase refuses', { project: 'my-project-id', previewTtlDays: 31 }],
+    ['private DNS without a domain', { project: 'my-project-id', privateDns: true }],
+  ])('refuses %s on a Firebase target', (_name, target) => {
+    expect(() =>
+      validateConfig({
+        site: { title: 'T', baseUrl: 'https://example.com' },
+        targets: { web: { provider: 'firebase', ...target } },
+      }),
+    ).toThrow();
+  });
+
   it('reports every issue with a dotted path', () => {
     const error = expectSforgeError(
       () =>

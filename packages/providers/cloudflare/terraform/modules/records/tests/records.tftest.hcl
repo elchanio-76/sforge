@@ -67,12 +67,12 @@ run "quoted_txt_records" {
   }
 }
 
-run "only_cname_and_txt_records" {
+run "only_the_record_types_custom_domains_use" {
   command = plan
 
   variables {
     records = {
-      "docs.example.com" = { name = "docs.example.com", type = "A", value = "192.0.2.1" }
+      "docs.example.com" = { name = "docs.example.com", type = "MX", value = "mail.example.com" }
     }
   }
 

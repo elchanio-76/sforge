@@ -74,10 +74,11 @@ function ciTargets(config: SforgeConfig, names: string[] | undefined): CiTarget[
       });
     }
     const environment = target.ci.environments[0];
-    // AWS previews are served from *.<previewDomain>; Azure ones from named environments.
+    // AWS previews are served from *.<previewDomain>; Azure ones from named environments,
+    // Firebase ones from channels.
     const previews =
       target.ci.pullRequests &&
-      (target.provider === 'azure' ||
+      (target.provider !== 'aws' ||
         (target.domain !== undefined && target.previewDomain !== undefined));
     return {
       name,

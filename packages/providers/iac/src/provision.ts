@@ -68,7 +68,7 @@ export interface IacRunOptions {
   inputs?: Record<string, unknown>;
   /** Engine to use instead of resolving one (tests). */
   engine?: Engine;
-  purpose?: 'provision' | 'outputs';
+  purpose?: 'provision' | 'plan' | 'outputs';
 }
 
 interface Opened {
@@ -235,8 +235,12 @@ export interface ProvisionOptions extends IacRunOptions {
 
 /** `sforge provision`: plan, and unless `diff`, apply after confirmation. */
 export async function provision(options: ProvisionOptions): Promise<ProvisionResult> {
-  const { engine, prepared, ws } = await open(options);
-  const { spec, state } = prepared;
+  const { engine, prepared, ws } = await open({
+    ...options,
+    purpose: options.diff ? 'plan' : 'provision',
+  });
+  const { state } = prepared;
+  const spec = { ...prepared.spec, ...(prepared.imports && { imports: prepared.imports }) };
   const result = {
     target: options.targetName,
     provider: options.profile.provider,

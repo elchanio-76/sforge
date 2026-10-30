@@ -74,9 +74,13 @@ export interface Deployer {
   current(): Promise<{ url: string; versionId: string | null }>;
   /**
    * The URL a preview will be served at, used as `site.baseUrl` when building it.
-   * Undefined when the provider cannot serve previews or does not know the URL.
+   * Undefined when the provider cannot serve previews or does not know the URL. Firebase
+   * learns it from the channel, so a real deploy creates the channel here; a dry run must not.
    */
-  previewBaseUrl?(previewId: string): string | undefined;
+  previewBaseUrl?(
+    previewId: string,
+    options?: { dryRun?: boolean },
+  ): string | undefined | Promise<string | undefined>;
 }
 
 export interface DeployerContext {

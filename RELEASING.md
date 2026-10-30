@@ -22,7 +22,7 @@ together, with the same version.
 
    npm can only set up trusted publishing for packages that exist.
 
-3. For each of the 15 packages, on npmjs.com → the package → Settings → Trusted publishing, add a
+3. For each of the 16 packages, on npmjs.com → the package → Settings → Trusted publishing, add a
    GitHub Actions publisher: repository `elchanio-76/sforge`, workflow `release.yml`, environment
    `npm`, and under Allowed actions tick **npm publish**. New entries only allow staged
    publishing, where every package waits for a manual approval. Then disallow token-based

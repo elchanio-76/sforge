@@ -8,9 +8,10 @@
 - **Content** is uploaded by `sforge deploy` with the cloud SDK. Every deploy is a new
   version; switching versions (deploy, rollback) takes seconds to a few minutes.
 
-AWS and Azure Static Web Apps targets are available. The sections below describe AWS unless they
-say otherwise; [Azure Static Web Apps](#azure-static-web-apps) lists what differs. Targets that
-require signing in are described in [Private sites](private-sites.md).
+AWS, Azure Static Web Apps and Firebase Hosting targets are available. The sections below describe
+AWS unless they say otherwise; [Azure Static Web Apps](#azure-static-web-apps) and
+[Firebase Hosting](#firebase-hosting) list what differs. Targets that require signing in are
+described in [Private sites](private-sites.md).
 
 > Custom domains (with records in Cloudflare) and PR previews on AWS are verified against real
 > accounts by the live tests. The GitHub Actions identities are covered by the module tests;
@@ -414,6 +415,125 @@ Free plan: 250 MB per environment, 500 MB per app, 15,000 files, 100 GB bandwidt
 `sforge destroy prod --confirm prod` removes the Static Web App (and its resource group, if sforge
 created it). The state storage account and its history are kept.
 
+## Firebase Hosting
+
+```ts
+// staticforge.config.ts
+export default defineConfig({
+  site: { title: 'Docs', baseUrl: 'https://docs.example.com' },
+  targets: {
+    prod: { provider: 'firebase', project: 'my-project-id' },
+  },
+});
+```
+
+```sh
+gcloud auth application-default login
+gcloud auth application-default set-quota-project my-project-id
+sforge provision prod --bootstrap-state        # once: state bucket, then the site
+sforge deploy prod
+sforge versions prod
+sforge deploy prod --preview pr-42             # a preview channel
+sforge preview-destroy prod pr-42
+sforge rollback prod                           # releases the previous version again
+```
+
+Firebase targets are public. Firebase Hosting cannot require signing in, so `auth` and `privateDns`
+fail with `SF_UNSUPPORTED`. Use an AWS or Azure target for a [private site](private-sites.md).
+
+### Setting up the project
+
+sforge does not create Google Cloud projects: their IDs are global and permanent, and linking
+billing takes rights sforge should not ask for. Once, by hand:
+
+1. Install the [gcloud CLI](https://cloud.google.com/sdk/docs/install) and log in with
+   `gcloud auth login`.
+2. Accept the Firebase Terms for your Google account at
+   <https://console.firebase.google.com/?forceCheckTos=true>. No API can do this.
+3. Create a project and link billing (the Blaze plan, which state storage needs). You need Owner on
+   the project, which its creator gets.
+
+   ```sh
+   gcloud projects create my-project-id
+   gcloud billing accounts list
+   gcloud billing projects link my-project-id --billing-account=XXXXXX-XXXXXX-XXXXXX
+   ```
+
+4. Set a [budget alert](https://console.cloud.google.com/billing/budgets). It warns you and does not
+   cap spending.
+5. Turn on the APIs that the rest is created through:
+
+   ```sh
+   gcloud services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com \
+     storage.googleapis.com --project my-project-id
+   ```
+
+6. Log in for sforge and the engine, as in the example above. This login is separate from
+   `gcloud auth login`. The quota project is where Google bills the API calls of a user login.
+
+A site within Firebase's [no-cost Hosting quotas](https://firebase.google.com/pricing) (10 GB
+stored, 360 MB a day served) costs nothing there. The state bucket holds a few small files.
+
+An existing project works too, and one that already uses Firebase is adopted: provisioning adds
+Firebase only if it is not there. Adding Firebase cannot be undone, so `destroy` leaves it on.
+
+### Target options
+
+`project` (required), `site` (the Hosting site ID, which names `<site>.web.app`: unique across all
+of Firebase, 4–30 characters, by default `<project name>-<target>`), `retainVersions` (versions
+Firebase keeps, default 10), `previewTtlDays` (days a preview lives after its last deploy, default
+7, at most 30), `state` (`bucket`, default `sforge-state-<project>`; `location`, default `EU`),
+`domain` and `dns` ([custom domain](#custom-domain-on-firebase)), `ci` ([GitHub Actions](ci.md)) and `baseUrl`.
+Without a `domain` the site is served at `https://<site>.web.app`: set the target's `baseUrl` (or
+`site.baseUrl`) to that URL so canonical links and the sitemap are right. A deleted site ID stays
+taken for a while, so a new site after `destroy` may need a new `site`.
+
+### Custom domain on Firebase
+
+```ts
+prod: {
+  provider: 'firebase',
+  project: 'my-project-id',
+  domain: 'www.example.com',
+  dns: { provider: 'cloudflare', zone: 'example.com' },
+},
+```
+
+Firebase names the DNS records it wants only once the domain exists. So `provision` creates the
+domain, then the records (through [Cloudflare](#dns-records-in-cloudflare)), then waits for the
+certificate, up to 30 minutes. If that takes longer, `provision` says so and succeeds: Firebase
+keeps trying for up to a day, and the site is already served at its `web.app` URL.
+
+Without `dns`, `provision` prints the records and waits until Firebase sees them; `--no-wait` stops
+after printing. On a project's first `provision --diff`, the plan cannot show the records yet.
+
+### Deploying, versions and rollback
+
+`deploy` creates a Hosting version and uploads only the files Firebase does not have yet, gzipped.
+Firebase compares content, so `uploaded` in the result counts new files, and `copied` the rest.
+Headers go in the version's configuration: the `security` options, and the cache class of each file.
+A site with more than 1,000 fingerprinted files outside fully fingerprinted directories gets a
+warning: the rest revalidate rather than being cached for a year.
+
+Rollback releases an earlier version again, in seconds and with no rebuild. Firebase's own release
+history is the history: `sforge versions` lists it, newest first, including versions deployed with
+other tools (under Firebase's ID for them). There is no `versions.json`. `--to` takes a version ID
+or at least four characters of its commit. `retainVersions` sets how many versions the site keeps;
+older ones are deleted, so they can no longer be rolled back to.
+
+### Previews
+
+`sforge deploy prod --preview pr-42` deploys to a **preview channel** and builds it with that
+channel's URL as `site.baseUrl`. Firebase names the URL (`https://<site>--pr-42-<hash>.web.app`), so
+the channel is created before the build. Channels expire `previewTtlDays` after their last deploy.
+`live` is the production channel and cannot be used as a preview ID. Preview pages get
+`<meta name="robots" content="noindex">`.
+
+### Destroying
+
+`sforge destroy prod --confirm prod` removes the site, its domain and its DNS records. The state
+bucket, Firebase on the project and the APIs are kept: other things in the project may use them.
+
 ## Destroying (AWS)
 
 ```sh
@@ -428,7 +548,9 @@ state file history are kept.
 AWS credentials come from the SDK's default chain (`AWS_PROFILE`, SSO, environment, OIDC in CI),
 both for sforge and for the engine. Azure credentials come from `DefaultAzureCredential` (`az login`,
 environment variables, managed identity, workload identity) for sforge, and the engine uses the
-Azure CLI login or the `ARM_*` variables. Missing or expired credentials, and missing permissions,
+Azure CLI login or the `ARM_*` variables. Google credentials come from Application Default
+Credentials (`gcloud auth application-default login`, or the file `google-github-actions/auth`
+writes in CI), both for sforge and for the engine. Missing or expired credentials, and missing permissions,
 fail with `SF_CLOUD_AUTH`, and so does a missing or refused `CLOUDFLARE_API_TOKEN` for targets
 with `dns`.
 Other error codes: `SF_ENGINE_MISSING`, `SF_STATE_MISSING`, `SF_NOT_PROVISIONED`,
@@ -439,7 +561,7 @@ Other error codes: `SF_ENGINE_MISSING`, `SF_STATE_MISSING`, `SF_NOT_PROVISIONED`
 ## Testing the modules
 
 ```sh
-cd packages/providers/aws/terraform/modules/site      # or packages/providers/azure/terraform/...
+cd packages/providers/aws/terraform/modules/site      # or azure/terraform/..., firebase/terraform/...
 tofu init -backend=false && tofu test     # mocked cloud: no account needed
 pnpm test:iac                             # validate the generated workspaces with tofu/terraform
 ```
@@ -460,6 +582,7 @@ name the account it will touch:
 ```sh
 SFORGE_LIVE=aws SFORGE_LIVE_CONFIRM=<account id> pnpm test:live          # eu-north-1, or SFORGE_LIVE_REGION
 SFORGE_LIVE=azure SFORGE_LIVE_CONFIRM=<subscription id> pnpm test:live   # eastus2, state in northeurope
+SFORGE_LIVE=firebase SFORGE_LIVE_CONFIRM=<project id> pnpm test:live     # gcloud's project, or SFORGE_LIVE_PROJECT
 ```
 
 Provisioning CloudFront takes several minutes, so an AWS run takes about 10–20 minutes. Run it

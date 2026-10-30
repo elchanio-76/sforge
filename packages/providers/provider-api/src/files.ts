@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { MANIFEST_PATH, type ManifestEntry } from '@staticforge/build';
 import { ErrorCode, SforgeError } from '@staticforge/core';
 
@@ -49,6 +49,39 @@ export function publishedFiles(manifest: BuildManifest): [string, ManifestEntry]
   return Object.entries(manifest.files)
     .filter(([path]) => isPublished(path))
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/**
+ * Rules that cache fingerprinted files for a year, for hosts without per-file
+ * metadata. A directory whose files are all immutable (the image variants) becomes
+ * one rule, anything else is listed file by file.
+ */
+export function immutableRoutes(manifest: BuildManifest): { dirs: string[]; files: string[] } {
+  const files = publishedFiles(manifest);
+  const totals = new Map<string, { all: number; immutable: number }>();
+  for (const [path, entry] of files) {
+    for (let dir = dirname(path); dir !== '.'; dir = dirname(dir)) {
+      const total = totals.get(dir) ?? { all: 0, immutable: 0 };
+      total.all++;
+      if (entry.cache === 'immutable') total.immutable++;
+      totals.set(dir, total);
+    }
+  }
+  const dirs = new Set<string>();
+  const exact: string[] = [];
+  for (const [path, entry] of files) {
+    if (entry.cache !== 'immutable') continue;
+    // The shallowest ancestor holding nothing but immutable files.
+    const ancestors: string[] = [];
+    for (let dir = dirname(path); dir !== '.'; dir = dirname(dir)) ancestors.unshift(dir);
+    const whole = ancestors.find((dir) => {
+      const total = totals.get(dir);
+      return total !== undefined && total.all === total.immutable;
+    });
+    if (whole !== undefined) dirs.add(whole);
+    else exact.push(path);
+  }
+  return { dirs: [...dirs].sort(), files: exact.sort() };
 }
 
 export type FileChange = 'upload' | 'copy' | 'unchanged';

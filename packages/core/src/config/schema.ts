@@ -209,6 +209,57 @@ const azureTargetSchema = z.strictObject({
   privateDns,
 });
 
+const firebaseTargetSchema = z.strictObject({
+  provider: z.literal('firebase'),
+  project: z
+    .string()
+    .regex(/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/, 'must be a Google Cloud project ID')
+    .describe('An existing Google Cloud project with billing linked (the Blaze plan).'),
+  site: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9-]{2,28}[a-z0-9]$/, 'must be 4-30 lowercase letters, digits or "-"')
+    .optional()
+    .describe(
+      'Firebase Hosting site ID, unique across all of Firebase; it names <site>.web.app. Defaults to "<project name>-<target>".',
+    ),
+  domain: hostname.optional().describe('Custom domain. Omit to use the *.web.app URL.'),
+  baseUrl: targetBaseUrl,
+  dns: dnsSchema.optional(),
+  retainVersions: z
+    .int()
+    .min(1)
+    .max(100)
+    .default(10)
+    .describe("Deployed versions Firebase keeps, which rollback chooses from (the site's limit)."),
+  previewTtlDays: z
+    .int()
+    .min(1)
+    .max(30)
+    .default(7)
+    .describe('Days a preview channel lives after its last deploy.'),
+  state: z
+    .strictObject({
+      bucket: z
+        .string()
+        .regex(/^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$/, 'must be a Cloud Storage bucket name')
+        .optional()
+        .describe('State bucket. Defaults to "sforge-state-<project>".'),
+      location: z
+        .string()
+        .min(1)
+        .default('EU')
+        .describe('Location of the state bucket, e.g. "EU" or "europe-north1".'),
+    })
+    .prefault({})
+    .describe('Remote state backend (Cloud Storage), created by --bootstrap-state.'),
+  ci: ciSchema.optional(),
+  auth: z
+    .unknown()
+    .optional()
+    .describe('Not supported: Firebase Hosting has no sign-in gate, so these targets are public.'),
+  privateDns,
+});
+
 /**
  * Default Content-Security-Policy: everything from the site itself, images,
  * media and frames also over https, inline style attributes (code highlighting).
@@ -236,6 +287,7 @@ const privateDnsIssue = { message: 'privateDns needs a domain', path: ['privateD
 export const targetSchema = z.discriminatedUnion('provider', [
   awsTargetSchema.refine(privateDnsNeedsDomain, privateDnsIssue),
   azureTargetSchema.refine(privateDnsNeedsDomain, privateDnsIssue),
+  firebaseTargetSchema.refine(privateDnsNeedsDomain, privateDnsIssue),
 ]);
 
 const collectionSchema = z.strictObject({
@@ -412,6 +464,7 @@ export type SforgeConfigInput = z.input<typeof configSchema>;
 export type TargetConfig = z.output<typeof targetSchema>;
 export type AwsTargetConfig = Extract<TargetConfig, { provider: 'aws' }>;
 export type AzureTargetConfig = Extract<TargetConfig, { provider: 'azure' }>;
+export type FirebaseTargetConfig = Extract<TargetConfig, { provider: 'firebase' }>;
 export type DnsConfig = z.output<typeof dnsSchema>;
 export type AwsAuthConfig = z.output<typeof awsAuthSchema>;
 export type AzureAuthConfig = z.output<typeof azureAuthSchema>;

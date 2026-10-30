@@ -3,7 +3,7 @@ import { uses } from './actions.js';
 /** A target as the workflows see it. */
 export interface CiTarget {
   name: string;
-  provider: 'aws' | 'azure';
+  provider: 'aws' | 'azure' | 'firebase';
   /** AWS region (for the STS endpoint). */
   region?: string;
   /** GitHub environment the production deploy runs in (approval rules are set in GitHub). */
@@ -49,6 +49,20 @@ export function variablesFor(target: CiTarget): RepoVariable[] {
   if (target.provider === 'aws') {
     return [
       { target: target.name, name: variable(target.name, 'ROLE_ARN'), output: 'ci_role_arn' },
+    ];
+  }
+  if (target.provider === 'firebase') {
+    return [
+      {
+        target: target.name,
+        name: variable(target.name, 'WORKLOAD_IDENTITY_PROVIDER'),
+        output: 'ci_workload_identity_provider',
+      },
+      {
+        target: target.name,
+        name: variable(target.name, 'SERVICE_ACCOUNT'),
+        output: 'ci_service_account',
+      },
     ];
   }
   return [
@@ -132,6 +146,14 @@ function loginSteps(target: CiTarget): string {
       '  with:',
       `    role-to-assume: \${{ vars.${variable(target.name, 'ROLE_ARN')} }}`,
       `    aws-region: ${target.region ?? 'us-east-1'}`,
+    ].join('\n');
+  }
+  if (target.provider === 'firebase') {
+    return [
+      `- uses: ${uses('googleLogin')}`,
+      '  with:',
+      `    workload_identity_provider: \${{ vars.${variable(target.name, 'WORKLOAD_IDENTITY_PROVIDER')} }}`,
+      `    service_account: \${{ vars.${variable(target.name, 'SERVICE_ACCOUNT')} }}`,
     ].join('\n');
   }
   return [

@@ -1,7 +1,7 @@
 # GitHub Actions
 
 `sforge ci init` writes GitHub Actions workflows that check every pull request, deploy it as a
-preview, and deploy the main branch to your targets. The workflows sign in to AWS and Azure with
+preview, and deploy the main branch to your targets. The workflows sign in to AWS, Azure and Google Cloud with
 GitHub's OIDC tokens through the identity `sforge provision` creates for each target, so the
 repository holds no cloud secrets.
 
@@ -61,7 +61,7 @@ Options: `--targets aws,azure` (default: every target with `ci`), `--package-man
   `sforge check --headless --format sarif`, and uploads the findings to code scanning, which shows
   them on the pull request. Problems at or above `check.failOn` fail the job and block the deploys.
 - **Preview on `<target>`** (pull requests): `sforge deploy <target> --preview pr-<number>`, for
-  targets with `ci.pullRequests` that can serve previews (Azure always; AWS with `domain` and
+  targets with `ci.pullRequests` that can serve previews (Azure and Firebase always; AWS with `domain` and
   `previewDomain`). Then one comment on the pull request lists the preview URLs, updated on every
   push.
 - **Deploy `<target>`** (pushes to the first of `ci.branches`, `main` without any): a production
@@ -89,7 +89,13 @@ A target's `ci` option decides which GitHub OIDC subjects its identity accepts:
 
 A job that names an environment presents the environment subject, not the branch: give a target
 either branches or environments for production. On AWS the role's trust policy lists the
-subjects; on Azure each subject is a federated login of the target's Entra application.
+subjects; on Azure each subject is a federated login of the target's Entra application; on Firebase
+each subject may act as the target's service account, through a Workload Identity pool that accepts
+only tokens of this repository.
+
+On Firebase, the service account has `roles/firebasehosting.admin` on the project, because Hosting
+has no role for a single site: CI can deploy every site in that project. Give sites that need
+isolating a project of their own. On the state bucket it can only read its own target's state.
 
 Repositories created since July 2026 (and older ones that opted in) use **immutable subjects**,
 which add the owner's and the repository's numeric IDs: `repo:acme@1001/docs@2002:pull_request`.

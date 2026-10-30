@@ -1393,7 +1393,8 @@
         "provider": {
           "enum": [
             "aws",
-            "azure"
+            "azure",
+            "firebase"
           ]
         },
         "versionId": {
@@ -1574,7 +1575,8 @@
         "provider": {
           "enum": [
             "aws",
-            "azure"
+            "azure",
+            "firebase"
           ]
         },
         "users": {
@@ -1737,7 +1739,8 @@
               "provider": {
                 "enum": [
                   "aws",
-                  "azure"
+                  "azure",
+                  "firebase"
                 ]
               },
               "branch": {

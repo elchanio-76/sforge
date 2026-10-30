@@ -30,7 +30,7 @@ try {
   mkdirSync(tarballs);
   run('pnpm', ['-r', 'pack', '--pack-destination', tarballs], { cwd: root });
   const files = readdirSync(tarballs).filter((f) => f.endsWith('.tgz'));
-  check(files.length === 15, `15 packages packed (${files.length})`);
+  check(files.length === 16, `16 packages packed (${files.length})`);
 
   // Name of the package in each tarball: "staticforge-core-0.1.0.tgz" → "@staticforge/core".
   const packages = Object.fromEntries(
@@ -83,6 +83,9 @@ try {
       'aws/terraform/modules/site',
       'azure/terraform/modules/site',
       'azure/terraform/modules/ci-oidc',
+      'firebase/terraform/modules/site',
+      'firebase/terraform/modules/ci-oidc',
+      'firebase/terraform/state-bootstrap',
       'cloudflare/terraform/modules/records',
     ].every((dir) => existsSync(join(project, `node_modules/@staticforge/${dir}/versions.tf`))),
     'the HCL modules are in the packages',

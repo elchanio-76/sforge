@@ -622,9 +622,12 @@ A third provider, Firebase Hosting, for public sites. Decisions (made with the u
 - `ci init`: `google-github-actions/auth` in `actions.ts` and `scripts/ci-pins.mjs`; variables `SFORGE_<T>_WORKLOAD_IDENTITY_PROVIDER` and `SFORGE_<T>_SERVICE_ACCOUNT`; previews always available, as on Azure.
 - Docs: Firebase in `deploy.md`, `ci.md`, README, RELEASING (the new package's first publish is by hand, then its trusted-publisher entry).
 
-### E. Prerequisites (the user)
+### E. Prerequisites (the user) ✅ done 2026-10-30
 - A new GCP project with billing linked and a budget alert.
 - The gcloud CLI, `gcloud auth application-default login`, Owner on the project.
+- `gcloud auth application-default set-quota-project <project>`: Firebase's APIs bill a user login's calls to a quota project.
+- The Firebase Terms accepted once for the account (https://console.firebase.google.com/?forceCheckTos=true). No API, CLI or Terraform can do this.
+- `serviceusage`, `cloudresourcemanager` and `storage` APIs enabled by hand: Terraform needs them before it can enable anything else, and `state-bootstrap` runs before the site module.
 - The existing Cloudflare token already covers TXT and A records.
 
 ### F. Verification
@@ -633,6 +636,29 @@ A third provider, Firebase Hosting, for public sites. Decisions (made with the u
 - Live (`SFORGE_LIVE=firebase SFORGE_LIVE_CONFIRM=<project id>`, asked before every run): bootstrap, provision, two deploys, HTTP checks (headers, redirects, 404, `.sforge/` hidden), a preview channel and its removal, rollback, destroy. Domain mode on `t-<id>.firebase.sforge.elchanio-76.eu`. Site IDs get a random suffix (deleted IDs are not immediately reusable).
 - `sforge-ci-test`: a Firebase target, then the PR, merge, close and rollback flow.
 - `pnpm test:pack` (16 packages), then 0.4.0 (rc first).
+
+### G. Progress
+Status 2026-10-30: code, mocked tests and docs are written. **Nothing has run against Google yet**: the live run below is next, and the items under "To settle live" are guesses until then.
+
+As built, differing from A–D:
+- CI identity is its own module, `modules/ci-oidc` (as on Azure), not `ci.tf` in the site module, so `hashicorp/random` is needed only with `ci`.
+- The pool's `attribute_condition` is `assertion.sub.startsWith('<subject prefix>:')` rather than a `repository_id` comparison: the prefix holds the immutable IDs where GitHub uses them, and it needs no extra lookup for older repositories. Members are exact `principal://…/subject/<sub>`, not principal sets.
+- The pool ID has a random suffix: a deleted pool blocks its ID for 30 days.
+- State access for CI is `storage.objectViewer` (it only reads outputs), not `objectUser`. The condition also allows the bucket resource, because listing is checked against the bucket.
+- Header rules use RE2 `regex` rather than globs, except the `**` rule: built paths can hold characters that globs treat specially. At most 1,000 rules; the rest revalidate, with a warning.
+- `Deployer.previewBaseUrl` may now return a promise and takes `{ dryRun }`: the channel URL holds a hash only Firebase knows, so a real deploy creates the channel before the build, and a dry run only reads it.
+- `IacSpec.imports` / `PreparedTarget.imports`, and `purpose: 'plan'`. **Projects that already use Firebase**: `prepare` asks the Firebase API, and if Firebase is on, `provision` adds an `import` block for `google_firebase_project`. Checked with both engines (on `random_id`): the block is a no-op once the resource is in state, and destroy plans ignore it. Status and destroy do not get the block.
+- The Cloudflare records have keys Firebase decides, unknown until the domain exists, and a map's keys must be known when planning. `provision` creates the domain first (the pre-phase). A plan with no pre-phase (`--diff`, status, destroy) leaves the DNS module out until the domain exists; `--diff` on a new target logs that it cannot show them.
+- `postApply` waits up to 30 minutes for the certificate, then returns a notice instead of failing: the site already works at `*.web.app`.
+- `immutableRoutes` and `hstsValue` moved from the Azure provider to `provider-api`, to be shared. `sforge init` gains `--project`.
+
+To settle live (assumptions the mocked tests cannot check):
+- A later header rule overrides an earlier one for the same header (`**` sets revalidation, later rules set `immutable`; the live test checks both).
+- `ADD`/`REMOVE` leave files alone, and match `resolveRequest`.
+- What `required_dns_updates.desired` holds for a subdomain, and whether it stays stable after activation: if the ACME record leaves the list once the certificate is issued, the next plan removes it. The second `--diff` of the domain-mode live test catches that.
+- Version labels accept the characters used, and `maxVersions` does not let preview versions push production ones out.
+- What adding Firebase to an already-Firebase project does; whether the import path is needed as built. Run provision on a second state prefix after a first run.
+- Whether `tofu init` works for the CI identity with only `objectViewer` (verified in `sforge-ci-test`).
 
 ## 20. M12 plan: code review (quality, security, CLI ↔ MCP parity)
 

@@ -30,7 +30,13 @@ export async function cloudflareRecords(zone: string, text: string): Promise<str
 /** The AWS SDK is a dependency of the AWS provider, not of the CLI. */
 export const fromAws = createRequire(new URL('../../providers/aws/package.json', import.meta.url));
 
-export async function cloudAccount(provider: 'aws' | 'azure'): Promise<string> {
+export async function cloudAccount(provider: 'aws' | 'azure' | 'firebase'): Promise<string> {
+  if (provider === 'firebase') {
+    return (
+      process.env.SFORGE_LIVE_PROJECT ??
+      execFileSync('gcloud', ['config', 'get-value', 'project'], { encoding: 'utf8' }).trim()
+    );
+  }
   if (provider === 'azure') {
     return execFileSync('az', ['account', 'show', '--query', 'id', '-o', 'tsv'], {
       encoding: 'utf8',

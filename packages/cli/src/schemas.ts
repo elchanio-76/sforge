@@ -133,7 +133,7 @@ function deployData(): Schema {
   return object(
     {
       target: targetName,
-      provider: { enum: ['aws', 'azure'] },
+      provider: { enum: ['aws', 'azure', 'firebase'] },
       versionId: string('The new version id, or the preview id.'),
       url: string('Where the version or preview is served.'),
       preview: boolean(),
@@ -272,7 +272,7 @@ export function commandDataSchemas(): Record<string, Schema> {
     }),
     'users list': object({
       target: targetName,
-      provider: { enum: ['aws', 'azure'] },
+      provider: { enum: ['aws', 'azure', 'firebase'] },
       users: {
         type: 'array',
         items: object(
@@ -321,7 +321,7 @@ export function commandDataSchemas(): Record<string, Schema> {
         items: object(
           {
             name: targetName,
-            provider: { enum: ['aws', 'azure'] },
+            provider: { enum: ['aws', 'azure', 'firebase'] },
             branch: string('Pushes to this branch deploy production.'),
             previews: boolean('Pull requests get a preview deploy.'),
           },

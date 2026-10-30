@@ -13,6 +13,7 @@
     "aws",
     "cloudfront",
     "azure",
+    "firebase",
     "static-web-apps"
   ],
   "homepage": "https://github.com/elchanio-76/sforge#readme",
@@ -56,6 +57,7 @@
     "@staticforge/cloudflare": "workspace:*",
     "@staticforge/core": "workspace:*",
     "@staticforge/dev-server": "workspace:*",
+    "@staticforge/firebase": "workspace:*",
     "@staticforge/iac": "workspace:*",
     "@staticforge/provider-api": "workspace:*",
     "commander": "^15.0.0",

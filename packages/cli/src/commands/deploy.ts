@@ -105,7 +105,10 @@ export function registerDeployCommands(program: Command, runtime: Runtime): void
       const deployer = await deployerFor(ctx, target);
 
       const outDir = resolve(rootDir, config.build.outDir);
-      const previewBaseUrl = preview === undefined ? undefined : deployer.previewBaseUrl?.(preview);
+      const previewBaseUrl =
+        preview === undefined
+          ? undefined
+          : await deployer.previewBaseUrl?.(preview, { dryRun: options.dryRun === true });
       // Previews get their own canonical URLs, feeds and sitemap; production gets the target's.
       const baseUrl =
         preview === undefined ? targetBaseUrl(config, target.targetName) : previewBaseUrl;

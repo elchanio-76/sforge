@@ -34,6 +34,11 @@ export const ACTIONS = {
     sha: 'a641126d1b8aa4d1fa005f4f92df94a3a4c4c906',
     version: 'v3.1.0',
   },
+  googleLogin: {
+    repo: 'google-github-actions/auth',
+    sha: '7c6bc770dae815cd3e89ee6cdf493a5fab2cc093',
+    version: 'v3.0.0',
+  },
   codeql: {
     repo: 'github/codeql-action',
     sha: '9b3254085494b55a0f7c4c2b3d2d52cc712ce370',

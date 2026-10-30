@@ -28,6 +28,15 @@ export function allowWasm(csp: string): string {
   return directives.join('; ');
 }
 
+/** The `Strict-Transport-Security` value for the configured policy. */
+export function hstsValue(hsts: NonNullable<SecurityHeaders['hsts']>): string {
+  return [
+    `max-age=${hsts.maxAge}`,
+    ...(hsts.includeSubDomains ? ['includeSubDomains'] : []),
+    ...(hsts.preload ? ['preload'] : []),
+  ].join('; ');
+}
+
 export function securityHeaders(config: SforgeConfig): SecurityHeaders {
   const { security } = config;
   const csp = security.contentSecurityPolicy === false ? null : security.contentSecurityPolicy;

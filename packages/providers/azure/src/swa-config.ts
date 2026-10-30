@@ -1,9 +1,10 @@
-import { dirname } from 'node:path';
 import type { AzureAuthConfig, SforgeConfig } from '@staticforge/core';
 import {
   type BuildManifest,
   cacheControl,
   contentType,
+  hstsValue,
+  immutableRoutes,
   publishedFiles,
   searchPaths,
   securityHeaders,
@@ -86,48 +87,6 @@ function mimeTypes(manifest: BuildManifest): Record<string, string> {
       contentType(`x${ext}`).split(';')[0] as string,
     ]),
   );
-}
-
-/**
- * Routes that cache fingerprinted files for a year. A directory whose files are
- * all immutable (the image variants) becomes one wildcard route, anything else
- * is listed file by file, most useful first.
- */
-function immutableRoutes(manifest: BuildManifest): { dirs: string[]; files: string[] } {
-  const files = publishedFiles(manifest);
-  const totals = new Map<string, { all: number; immutable: number }>();
-  for (const [path, entry] of files) {
-    for (let dir = dirname(path); dir !== '.'; dir = dirname(dir)) {
-      const total = totals.get(dir) ?? { all: 0, immutable: 0 };
-      total.all++;
-      if (entry.cache === 'immutable') total.immutable++;
-      totals.set(dir, total);
-    }
-  }
-  const dirs = new Set<string>();
-  const exact: string[] = [];
-  for (const [path, entry] of files) {
-    if (entry.cache !== 'immutable') continue;
-    // The shallowest ancestor holding nothing but immutable files.
-    const ancestors: string[] = [];
-    for (let dir = dirname(path); dir !== '.'; dir = dirname(dir)) ancestors.unshift(dir);
-    const whole = ancestors.find((dir) => {
-      const total = totals.get(dir);
-      return total !== undefined && total.all === total.immutable;
-    });
-    if (whole !== undefined) dirs.add(whole);
-    else exact.push(path);
-  }
-  return { dirs: [...dirs].sort(), files: exact.sort() };
-}
-
-/** The `Strict-Transport-Security` value for the configured policy. */
-function hstsValue(hsts: NonNullable<ReturnType<typeof securityHeaders>['hsts']>): string {
-  return [
-    `max-age=${hsts.maxAge}`,
-    ...(hsts.includeSubDomains ? ['includeSubDomains'] : []),
-    ...(hsts.preload ? ['preload'] : []),
-  ].join('; ');
 }
 
 /**

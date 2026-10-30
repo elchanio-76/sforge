@@ -6,7 +6,7 @@
   collections, tags, RSS/Atom feeds, a sitemap, responsive images and client-side search,
 - checks the output against WCAG 2.2 AA, with optional autofix,
 - serves a local preview with live reload and fast incremental rebuilds,
-- provisions and deploys to AWS (private S3 + CloudFront) and Azure Static Web Apps,
+- provisions and deploys to AWS (private S3 + CloudFront), Azure Static Web Apps and Firebase Hosting,
 - offers all of this to AI agents as an MCP server, and to scripts as JSON with schemas.
 
 > **Status:** early development (milestone M8: hardening and the first npm release). See [PLAN.md](PLAN.md) for the design and roadmap.
@@ -79,6 +79,7 @@ See [docs/content/content.md](docs/content/content.md) for project layout, URLs,
 | [`@staticforge/provider-api`](packages/providers/provider-api) | Provider interface, manifests, cache and security headers             |
 | [`@staticforge/aws`](packages/providers/aws)                   | AWS: HCL modules, S3 + CloudFront deployer, versions, previews        |
 | [`@staticforge/azure`](packages/providers/azure)               | Azure: HCL modules, Static Web Apps deployer, previews, rollback      |
+| [`@staticforge/firebase`](packages/providers/firebase)         | Firebase: HCL modules, Hosting deployer, channels, rollback           |
 | [`staticforge`](packages/cli)                                  | The `sforge` command-line interface and MCP server                    |
 
 ## CLI contract (for scripts and agents)
@@ -96,7 +97,7 @@ See [docs/content/content.md](docs/content/content.md) for project layout, URLs,
 ### Commands available so far
 
 ```
-sforge init [dir]          # scaffold a project (--format ts|json|yaml, --provider aws|azure)
+sforge init [dir]          # scaffold a project (--format ts|json|yaml, --provider aws|azure|firebase)
 sforge new page|post <path> # create content with front-matter
 sforge build               # build into dist/ (--drafts, --out, --base-url)
 sforge dev                 # build, serve and live-reload (--port, --host, --open, --drafts)

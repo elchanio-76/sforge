@@ -25,9 +25,14 @@ import { loadProjectConfigAt } from './project.js';
 async function providerFor(runtime: Runtime, target: TargetConfig): Promise<Provider> {
   const injected = runtime.providers?.[target.provider];
   if (injected !== undefined) return injected;
-  return target.provider === 'aws'
-    ? (await import('@staticforge/aws')).createAwsProvider()
-    : (await import('@staticforge/azure')).createAzureProvider();
+  switch (target.provider) {
+    case 'aws':
+      return (await import('@staticforge/aws')).createAwsProvider();
+    case 'azure':
+      return (await import('@staticforge/azure')).createAzureProvider();
+    case 'firebase':
+      return (await import('@staticforge/firebase')).createFirebaseProvider();
+  }
 }
 
 /** The DNS provider of a target's `dns`, loaded on demand like the cloud providers. */

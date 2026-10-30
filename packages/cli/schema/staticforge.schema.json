@@ -762,6 +762,150 @@
               "location"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "const": "firebase"
+              },
+              "project": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
+                "description": "An existing Google Cloud project with billing linked (the Blaze plan)."
+              },
+              "site": {
+                "description": "Firebase Hosting site ID, unique across all of Firebase; it names <site>.web.app. Defaults to \"<project name>-<target>\".",
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{2,28}[a-z0-9]$"
+              },
+              "domain": {
+                "description": "Custom domain. Omit to use the *.web.app URL.",
+                "type": "string",
+                "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+              },
+              "baseUrl": {
+                "description": "URL this target serves the site at, for canonical links, feeds and sitemaps. Defaults to https://<domain>/ with a domain, otherwise site.baseUrl.",
+                "type": "string",
+                "format": "uri"
+              },
+              "dns": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "const": "cloudflare"
+                  },
+                  "zone": {
+                    "type": "string",
+                    "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$",
+                    "description": "The DNS zone (domain) that holds the records, e.g. \"example.com\"."
+                  },
+                  "zoneId": {
+                    "description": "Zone ID. Defaults to a lookup of the zone by name (needs Zone Read).",
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "zone"
+                ],
+                "additionalProperties": false,
+                "description": "Create the DNS records of the custom domain (certificate validation, routing). Records are DNS-only, never proxied. The API token comes from CLOUDFLARE_API_TOKEN."
+              },
+              "retainVersions": {
+                "default": 10,
+                "description": "Deployed versions Firebase keeps, which rollback chooses from (the site's limit).",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "previewTtlDays": {
+                "default": 7,
+                "description": "Days a preview channel lives after its last deploy.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 30
+              },
+              "state": {
+                "description": "Remote state backend (Cloud Storage), created by --bootstrap-state.",
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "bucket": {
+                    "description": "State bucket. Defaults to \"sforge-state-<project>\".",
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$"
+                  },
+                  "location": {
+                    "default": "EU",
+                    "description": "Location of the state bucket, e.g. \"EU\" or \"europe-north1\".",
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              },
+              "ci": {
+                "type": "object",
+                "properties": {
+                  "repo": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$",
+                    "description": "GitHub repository allowed to deploy, as \"owner/repo\"."
+                  },
+                  "branches": {
+                    "default": [
+                      "main"
+                    ],
+                    "description": "Branches whose workflows may deploy.",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "environments": {
+                    "default": [],
+                    "description": "GitHub deployment environments whose workflows may deploy.",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "pullRequests": {
+                    "default": true,
+                    "description": "Allow pull_request workflows to deploy previews.",
+                    "type": "boolean"
+                  },
+                  "subjectPrefix": {
+                    "description": "Start of the OIDC tokens' sub claim, e.g. repo:owner@123/repo@456. Defaults to the repository's sub_claim_prefix, read from GitHub when provisioning.",
+                    "type": "string",
+                    "pattern": "^repo:[A-Za-z0-9_.-]+(@\\d+)?\\/[A-Za-z0-9_.-]+(@\\d+)?$"
+                  }
+                },
+                "required": [
+                  "repo"
+                ],
+                "additionalProperties": false
+              },
+              "auth": {
+                "description": "Not supported: Firebase Hosting has no sign-in gate, so these targets are public."
+              },
+              "privateDns": {
+                "default": false,
+                "description": "The custom domain resolves only in a private (internal) DNS zone: the public zone (dns) gets only certificate validation records, and the site's own records are printed for the internal DNS. Requires domain.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "provider",
+              "project"
+            ],
+            "additionalProperties": false
           }
         ]
       }

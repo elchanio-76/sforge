@@ -37,6 +37,16 @@ describe('initProject', () => {
     },
   );
 
+  it('adds a Firebase target with the given project', async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), 'sforge-init-')), 'my-blog');
+    initProject({ dir, format: 'json', provider: 'firebase', project: 'my-project-id' });
+    const loaded = await loadConfig({ cwd: dir, aliases: { staticforge: coreEntry } });
+    expect(loaded.config.targets.staging).toMatchObject({
+      provider: 'firebase',
+      project: 'my-project-id',
+    });
+  });
+
   it('refuses to initialize over an existing project unless forced', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sforge-init-'));
     initProject({ dir, format: 'json' });

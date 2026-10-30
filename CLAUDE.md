@@ -61,6 +61,12 @@ CLIs (`aws sts get-caller-identity`, `az account show`) or the Cloudflare MCP.
   new Storage and Static Web Apps for this subscription: use `eastus2` for SWA and
   `state: { location: 'northeurope' }`. The shared state account in resource group
   `sforge-state` is kept on purpose (live tests reuse it).
+- **Google Cloud / Firebase**: a sandbox project (billing linked, budget alert set, Firebase Terms
+  accepted). gcloud config `sforge`, selected by `CLOUDSDK_ACTIVE_CONFIG_NAME` in `.envrc`: in
+  non-interactive shells export it or use `direnv exec`. The `default` config is the user's own
+  project: leave it alone. sforge and the engine use Application Default Credentials, a separate
+  login: when it has expired, ask the user to run `! gcloud auth application-default login`, then
+  `gcloud auth application-default set-quota-project <project>`.
 - **Cloudflare**: zone `elchanio-76.eu` (DNS only, Free plan, DNSSEC on, no CAA). sforge's
   records live under `sforge.elchanio-76.eu`; never create them by hand. `CLOUDFLARE_API_TOKEN`
   comes from the project's `.envrc` (direnv, gitignored): in non-interactive shells run
