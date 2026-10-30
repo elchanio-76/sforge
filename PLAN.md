@@ -658,8 +658,11 @@ Found live:
 - Settled by the live cycle: a later header rule overrides an earlier one (`**` sets revalidation, later rules set `immutable`); `ADD` and `REMOVE` redirect pages as `resolveRequest` does and leave files alone; 404 pages; version labels accept the characters used; `tofu output` and the state bucket work for a user login.
 - Adding Firebase creates a `DEFAULT_SITE` named after the project, which sforge did not ask for and which stays. A target whose `site` is the project ID would collide with it.
 
+- Domain mode: Firebase asks for one CNAME on a subdomain, and an `_acme-challenge` TXT. Provision with a project that already has Firebase works through the import block. The certificate took longer than the 30-minute wait in the one run that recorded it; HTTPS worked within the next few minutes.
+- A second plan right after provision showed changes in one domain run of two (the plan's contents were not recorded). The ACME TXT came from `cert.verification.dns`, which Google describes as a way to get a certificate *before* pointing traffic at Hosting, so it is no longer managed: sforge creates the routing record in the same apply. Only `required_dns_updates` goes to DNS now.
+- A first preview returned 404 for the whole two-minute wait in one run of three (the body was not recorded) and worked in the others; a second preview in that run was fine. The test now waits 10 minutes on Firebase and prints the first answer and how long it took.
+
 To settle live (assumptions the mocked tests cannot check):
-- What `required_dns_updates.desired` holds for a subdomain, and whether it stays stable after activation: if the ACME record leaves the list once the certificate is issued, the next plan removes it. The second `--diff` of the domain-mode live test catches that.
 - `maxVersions` does not let preview versions push production ones out (not exercised: the cycle has too few versions).
 - The import path for a project that already uses Firebase: the sandbox now has Firebase on, so the domain run exercises it.
 - Whether `tofu init` works for the CI identity with only `objectViewer` (verified in `sforge-ci-test`).

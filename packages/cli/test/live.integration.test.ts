@@ -135,7 +135,11 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
 
     it('provisions, with a remote state backend, and then has nothing to change', async () => {
       provisioned = true; // even a failed apply may have created something
+      const provisioning = Date.now();
       const result = await sforge(dir, 'provision', target, '--bootstrap-state', '--yes');
+      process.stderr.write(`Provisioned in ${Math.round((Date.now() - provisioning) / 1000)}s\n`);
+      if (result.notices?.length > 0)
+        process.stderr.write(`Notices: ${result.notices.join(' | ')}\n`);
       expect(result.applied).toBe(true);
       url = String(result.outputs.url).replace(/\/$/, '');
       if (domain !== undefined && dnsZone !== undefined) {
@@ -144,6 +148,7 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
         if (provider === 'firebase') {
           // Firebase names the records itself: routing and ownership on the domain.
           expect(records.filter((r) => r.startsWith(`${domain} `)).length).toBeGreaterThan(0);
+          process.stderr.write(`Records Firebase asked for: ${records.join(', ')}\n`);
         } else {
           expect(records).toContain(`${domain} CNAME`);
         }
@@ -154,6 +159,8 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
         }
       }
       const plan = await sforge(dir, 'provision', target, '--diff');
+      if (plan.plan.changes)
+        process.stderr.write(`Second plan: ${JSON.stringify(plan.plan.resources)}\n`);
       expect(plan.plan.changes).toBe(false);
       // The IaC workspace is meant to be committed (docs/content/deploy.md).
       commit(dir, 'Provision');
@@ -166,6 +173,7 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
 
       // A new custom domain may need a while: DNS, and on Azure the managed certificate.
       // fetch verifies the certificate, so this also checks it covers the domain.
+      const waiting = Date.now();
       const home = await eventually(
         async () => {
           const response = await fetch(`${url}/`);
@@ -173,6 +181,9 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
           return response;
         },
         domain === undefined ? 2 * MINUTE : 15 * MINUTE,
+      );
+      process.stderr.write(
+        `Served after a further ${Math.round((Date.now() - waiting) / 1000)}s\n`,
       );
       const html = await home.text();
       expect(html).toContain('<html lang="en"');
@@ -292,11 +303,26 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
         requireUrl();
         const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');
         const previewUrl = String(preview.url).replace(/\/$/, '');
-        const html = await eventually(async () => {
-          const response = await fetch(`${previewUrl}/`);
-          if (response.status !== 200) throw new Error(`preview → ${response.status}`);
-          return response.text();
-        });
+        const started = Date.now();
+        let reported = false;
+        // Firebase's own "Site Not Found" and the site's 404 page mean different things.
+        const html = await eventually(
+          async () => {
+            const response = await fetch(`${previewUrl}/`);
+            if (response.status !== 200) {
+              const body = (await response.text()).replace(/\s+/g, ' ').slice(0, 200);
+              const failure = `${previewUrl}/ → ${response.status}: ${body}`;
+              if (!reported) process.stderr.write(`First answer: ${failure}\n`);
+              reported = true;
+              throw new Error(failure);
+            }
+            return response.text();
+          },
+          provider === 'firebase' ? 10 * MINUTE : 2 * MINUTE,
+        );
+        process.stderr.write(
+          `Preview served after ${Math.round((Date.now() - started) / 1000)}s\n`,
+        );
         if (provider === 'firebase') {
           // The build knew the channel's URL, which only Firebase can name.
           expect(html).toContain(`<link rel="canonical" href="${previewUrl}/"`);

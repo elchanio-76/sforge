@@ -500,8 +500,8 @@ prod: {
 },
 ```
 
-Firebase names the DNS records it wants only once the domain exists. So `provision` creates the
-domain, then the records (through [Cloudflare](#dns-records-in-cloudflare)), then waits for the
+Firebase names the DNS records it wants only once the domain exists (for a subdomain, a CNAME). So
+`provision` creates the domain, then the records (through [Cloudflare](#dns-records-in-cloudflare)), then waits for the
 certificate, up to 30 minutes. If that takes longer, `provision` says so and succeeds: Firebase
 keeps trying for up to a day, and the site is already served at its `web.app` URL.
 

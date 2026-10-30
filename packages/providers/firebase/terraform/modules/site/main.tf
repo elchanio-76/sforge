@@ -59,24 +59,20 @@ resource "google_firebase_hosting_custom_domain" "this" {
 locals {
   domain = one(google_firebase_hosting_custom_domain.this)
 
-  # What Hosting wants published: routing and ownership, then the certificate's
-  # challenge. A record marked REMOVE is one Hosting found and wants gone, which
-  # is the zone owner's decision.
+  # What Hosting wants published to serve the domain. A record marked REMOVE is
+  # one Hosting found and wants gone, which is the zone owner's decision. The
+  # certificate's ACME challenges are left out on purpose: Google describes them
+  # as a way to get a certificate before pointing traffic at Hosting, and the
+  # routing record goes out at the same time. Keeping them would also tie DNS to
+  # a value Firebase changes on its own while the certificate is pending.
   wanted_records = local.domain == null ? [] : [
-    for record in concat(
-      flatten([for update in local.domain.required_dns_updates : [for set in update.desired : set.records]]),
-      flatten([
-        for cert in local.domain.cert : [
-          for verification in cert.verification : [
-            for challenge in verification.dns : [for set in challenge.desired : set.records]
-          ]
-        ]
-      ]),
-    ) : record if record.required_action != "REMOVE"
+    for record in flatten([
+      for update in local.domain.required_dns_updates : [for set in update.desired : set.records]
+    ]) : record if record.required_action != "REMOVE"
   ]
 
-  # A name can have several values, and a value can be listed twice (the same
-  # TXT for ownership and the certificate): the key is the whole record.
+  # A name can have several values, and a value can be listed twice: the key is
+  # the whole record.
   dns_records = {
     for record in local.wanted_records :
     lower("${record.type}-${trimsuffix(record.domain_name, ".")}-${substr(sha256(record.rdata), 0, 8)}") => {

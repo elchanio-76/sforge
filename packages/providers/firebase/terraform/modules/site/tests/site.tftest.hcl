@@ -16,6 +16,7 @@ mock_provider "google-beta" {
             records = [
               { domain_name = "firebase.example.com.", rdata = "199.36.158.100", required_action = "ADD", type = "A" },
               { domain_name = "firebase.example.com.", rdata = "hosting-site=docs-prod", required_action = "ADD", type = "TXT" },
+              { domain_name = "firebase.example.com.", rdata = "hosting-site=docs-prod", required_action = "NONE", type = "TXT" },
               { domain_name = "firebase.example.com.", rdata = "203.0.113.9", required_action = "REMOVE", type = "A" },
             ]
           },
@@ -96,12 +97,16 @@ run "a_custom_domain_exports_its_records" {
     error_message = "The records come from this resource, so it cannot wait for them."
   }
   assert {
-    condition     = length(output.dns_records) == 3
-    error_message = "The A, the ownership TXT and one ACME TXT: no REMOVE, no duplicates."
+    condition     = length(output.dns_records) == 2
+    error_message = "The routing record and the ownership TXT: no REMOVE, no ACME challenge."
   }
   assert {
     condition     = length([for r in values(output.dns_records) : r if r.type == "A" && r.value == "199.36.158.100"]) == 1
     error_message = "The A record to add must be exported."
+  }
+  assert {
+    condition     = length([for r in values(output.dns_records) : r if startswith(r.name, "_acme-challenge")]) == 0
+    error_message = "ACME challenges are for moving a domain before its traffic, and they change."
   }
   assert {
     condition     = length([for r in values(output.dns_records) : r if r.value == "203.0.113.9"]) == 0
