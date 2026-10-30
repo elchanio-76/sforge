@@ -486,7 +486,8 @@ Firebase keeps, default 10), `previewTtlDays` (days a preview lives after its la
 `domain` and `dns` ([custom domain](#custom-domain-on-firebase)), `ci` ([GitHub Actions](ci.md)) and `baseUrl`.
 Without a `domain` the site is served at `https://<site>.web.app`: set the target's `baseUrl` (or
 `site.baseUrl`) to that URL so canonical links and the sitemap are right. A deleted site ID stays
-taken for a while, so a new site after `destroy` may need a new `site`.
+taken for a while, so a new site after `destroy` may need a new `site`. Firebase keeps a default
+site named after the project for itself, so do not use the project ID as `site`.
 
 ### Custom domain on Firebase
 

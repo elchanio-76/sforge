@@ -638,7 +638,7 @@ A third provider, Firebase Hosting, for public sites. Decisions (made with the u
 - `pnpm test:pack` (16 packages), then 0.4.0 (rc first).
 
 ### G. Progress
-Status 2026-10-30: code, mocked tests and docs are written. **Nothing has run against Google yet**: the live run below is next, and the items under "To settle live" are guesses until then.
+Status 2026-10-30: code, mocked tests and docs are written. The live cycle without a domain **passes** on a new project (bootstrap, provision, no changes on a second plan, two deploys, HTTP checks, drift, rollback, preview channels, destroy; about 3.5 minutes). **Not yet run**: the domain mode, `sforge-ci-test`, and 0.4.0.
 
 As built, differing from A–D:
 - CI identity is its own module, `modules/ci-oidc` (as on Azure), not `ci.tf` in the site module, so `hashicorp/random` is needed only with `ci`.
@@ -655,12 +655,13 @@ As built, differing from A–D:
 Found live:
 - `google_client_openid_userinfo` returns a null email with `user_project_override`: Google's OpenID endpoint refuses the quota project header (403 `USER_PROJECT_DENIED`) and the provider hides the error. So `state-bootstrap` no longer gives the caller `storage.objectAdmin`: project owners and editors get the objects through a new bucket's default legacy roles, which bootstrapping proves when it moves its state in.
 
+- Settled by the live cycle: a later header rule overrides an earlier one (`**` sets revalidation, later rules set `immutable`); `ADD` and `REMOVE` redirect pages as `resolveRequest` does and leave files alone; 404 pages; version labels accept the characters used; `tofu output` and the state bucket work for a user login.
+- Adding Firebase creates a `DEFAULT_SITE` named after the project, which sforge did not ask for and which stays. A target whose `site` is the project ID would collide with it.
+
 To settle live (assumptions the mocked tests cannot check):
-- A later header rule overrides an earlier one for the same header (`**` sets revalidation, later rules set `immutable`; the live test checks both).
-- `ADD`/`REMOVE` leave files alone, and match `resolveRequest`.
 - What `required_dns_updates.desired` holds for a subdomain, and whether it stays stable after activation: if the ACME record leaves the list once the certificate is issued, the next plan removes it. The second `--diff` of the domain-mode live test catches that.
-- Version labels accept the characters used, and `maxVersions` does not let preview versions push production ones out.
-- What adding Firebase to an already-Firebase project does; whether the import path is needed as built. Run provision on a second state prefix after a first run.
+- `maxVersions` does not let preview versions push production ones out (not exercised: the cycle has too few versions).
+- The import path for a project that already uses Firebase: the sandbox now has Firebase on, so the domain run exercises it.
 - Whether `tofu init` works for the CI identity with only `objectViewer` (verified in `sforge-ci-test`).
 
 ## 20. M12 plan: code review (quality, security, CLI ↔ MCP parity)
