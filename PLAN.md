@@ -638,7 +638,7 @@ A third provider, Firebase Hosting, for public sites. Decisions (made with the u
 - `pnpm test:pack` (16 packages), then 0.4.0 (rc first).
 
 ### G. Progress
-Status 2026-10-30: code, mocked tests and docs are written. The live cycle without a domain **passes** on a new project (bootstrap, provision, no changes on a second plan, two deploys, HTTP checks, drift, rollback, preview channels, destroy; about 3.5 minutes). **Not yet run**: the domain mode, `sforge-ci-test`, and 0.4.0.
+Status 2026-10-31: code, mocked tests and docs are written. The live cycle without a domain **passes** on a new project (bootstrap, provision, no changes on a second plan, two deploys, HTTP checks, drift, rollback, preview channels, destroy; about 3.5 minutes), though on an earlier version of the DNS code. The domain mode has **not yet passed end to end**: its last fix (the computed CNAME) awaits a rerun. **Not yet run**: `sforge-ci-test`, and 0.4.0.
 
 As built, differing from A–D:
 - CI identity is its own module, `modules/ci-oidc` (as on Azure), not `ci.tf` in the site module, so `hashicorp/random` is needed only with `ci`.
@@ -658,12 +658,16 @@ Found live:
 - Settled by the live cycle: a later header rule overrides an earlier one (`**` sets revalidation, later rules set `immutable`); `ADD` and `REMOVE` redirect pages as `resolveRequest` does and leave files alone; 404 pages; version labels accept the characters used; `tofu output` and the state bucket work for a user login.
 - Adding Firebase creates a `DEFAULT_SITE` named after the project, which sforge did not ask for and which stays. A target whose `site` is the project ID would collide with it.
 
-- Domain mode: Firebase asks for one CNAME on a subdomain, and an `_acme-challenge` TXT. Provision with a project that already has Firebase works through the import block. The certificate took longer than the 30-minute wait in the one run that recorded it; HTTPS worked within the next few minutes.
-- A second plan right after provision showed changes in one domain run of two (the plan's contents were not recorded). The ACME TXT came from `cert.verification.dns`, which Google describes as a way to get a certificate *before* pointing traffic at Hosting, so it is no longer managed: sforge creates the routing record in the same apply. Only `required_dns_updates` goes to DNS now.
+- Domain mode: Firebase asks for one CNAME on a subdomain, and an `_acme-challenge` TXT from `cert.verification.dns`, which Google describes as a way to get a certificate *before* pointing traffic at Hosting. It is not managed: the certificate is issued without it. Provision with a project that already has Firebase works through the import block.
 - With only the CNAME, the certificate is still issued and a second plan is clean. Timing: about 37 minutes from the start of provision, so the wait is now 45 minutes (30 expired in both runs that recorded it). For a while after the first HTTPS answer, some edges still present `*.firebaseapp.com`: documented, and the test now requires stable answers on fresh connections.
 - **Intermittent preview 404, cause unknown.** A channel returned 404 for at least two minutes in two of three domain runs (`pr-1` at `/`, then `pr-2` at `/about`), while other channels answered at once. Neither body was recorded. Matters because the URL goes straight into a PR comment. The test now waits 10 minutes and prints the first answer, cache headers and time to recover.
 
+- **Fixed: the next provision would have deleted the live site's CNAME.** Once a domain is active, Firebase stops listing the record in `required_dns_updates`, and the module followed that list (a second plan showed the record's `delete`). The plan's approach (D: read `desired`, pre-phase, several values per name, A/AAAA in the Cloudflare module) is replaced: `modules/site` computes one CNAME to `<site>.web.app`. Checked against the logged records' hashes. That needs no pre-phase with a DNS provider, so `--diff` shows the record from the start, and the Cloudflare module is back to CNAME and TXT. An apex gets `SF_UNSUPPORTED`, as on Azure: its records could not be verified. The live test now plans again after the certificate.
+- `cert.state` is unreliable for waiting: it did not report active at 46 minutes while HTTPS answered with a valid certificate. `postApply` now asks the domain itself, and its notice on timeout includes Firebase's states.
+
 To settle live (assumptions the mocked tests cannot check):
+- The computed CNAME: no plan changes after the certificate, in both the second plan and the later one. **Not yet verified live.**
+- `ownershipState`/`hostState` as the wait without a DNS provider: never observed, because live runs use Cloudflare.
 - `maxVersions` does not let preview versions push production ones out (not exercised: the cycle has too few versions).
 - The import path for a project that already uses Firebase: the sandbox now has Firebase on, so the domain run exercises it.
 - Whether `tofu init` works for the CI identity with only `objectViewer` (verified in `sforge-ci-test`).

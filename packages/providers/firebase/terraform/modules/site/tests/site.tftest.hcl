@@ -3,49 +3,7 @@
 
 mock_provider "google" {}
 
-mock_provider "google-beta" {
-  mock_resource "google_firebase_hosting_custom_domain" {
-    defaults = {
-      required_dns_updates = [{
-        check_time = "2026-10-30T00:00:00Z"
-        discovered = []
-        desired = [
-          {
-            domain_name = "firebase.example.com"
-            check_error = []
-            records = [
-              { domain_name = "firebase.example.com.", rdata = "199.36.158.100", required_action = "ADD", type = "A" },
-              { domain_name = "firebase.example.com.", rdata = "hosting-site=docs-prod", required_action = "ADD", type = "TXT" },
-              { domain_name = "firebase.example.com.", rdata = "hosting-site=docs-prod", required_action = "NONE", type = "TXT" },
-              { domain_name = "firebase.example.com.", rdata = "203.0.113.9", required_action = "REMOVE", type = "A" },
-            ]
-          },
-        ]
-      }]
-      cert = [{
-        type  = "GROUPED"
-        state = "CERT_PREPARING"
-        verification = [{
-          http = []
-          dns = [{
-            check_time = "2026-10-30T00:00:00Z"
-            discovered = []
-            desired = [
-              {
-                domain_name = "_acme-challenge.firebase.example.com"
-                check_error = []
-                records = [
-                  { domain_name = "_acme-challenge.firebase.example.com.", rdata = "token", required_action = "ADD", type = "TXT" },
-                  { domain_name = "_acme-challenge.firebase.example.com.", rdata = "token", required_action = "ADD", type = "TXT" },
-                ]
-              },
-            ]
-          }]
-        }]
-      }]
-    }
-  }
-}
+mock_provider "google-beta" {}
 
 variables {
   project = "my-project"
@@ -94,22 +52,18 @@ run "a_custom_domain_exports_its_records" {
   }
   assert {
     condition     = !google_firebase_hosting_custom_domain.this[0].wait_dns_verification
-    error_message = "The records come from this resource, so it cannot wait for them."
+    error_message = "Provision does the waiting: it can say something useful when it takes long."
   }
   assert {
-    condition     = length(output.dns_records) == 2
-    error_message = "The routing record and the ownership TXT: no REMOVE, no ACME challenge."
+    condition     = output.dns_records.routing.type == "CNAME" && output.dns_records.routing.name == "firebase.example.com"
+    error_message = "The domain needs a CNAME."
   }
   assert {
-    condition     = length([for r in values(output.dns_records) : r if r.type == "A" && r.value == "199.36.158.100"]) == 1
-    error_message = "The A record to add must be exported."
+    condition     = output.dns_records.routing.value == "docs-prod.web.app"
+    error_message = "The CNAME points at the site's own host name."
   }
   assert {
-    condition     = length([for r in values(output.dns_records) : r if startswith(r.name, "_acme-challenge")]) == 0
-    error_message = "ACME challenges are for moving a domain before its traffic, and they change."
-  }
-  assert {
-    condition     = length([for r in values(output.dns_records) : r if r.value == "203.0.113.9"]) == 0
-    error_message = "Records Hosting wants removed must not be created."
+    condition     = length(output.dns_records) == 1
+    error_message = "Only the routing record: no ACME challenge, nothing read from Firebase."
   }
 }

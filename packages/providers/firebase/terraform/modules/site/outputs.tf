@@ -26,6 +26,6 @@ output "domain" {
 }
 
 output "dns_records" {
-  description = "DNS records Firebase wants for the custom domain, keyed by the whole record."
-  value       = { for key, records in local.dns_records : key => records[0] }
+  description = "DNS records of the custom domain."
+  value       = local.dns_records
 }

@@ -42,8 +42,8 @@ resource "google_firebase_hosting_site" "this" {
   depends_on = [google_firebase_project.this]
 }
 
-# Not waiting for DNS: the records this module exports are read from this very
-# resource, so it has to exist before they can be created.
+# Not waiting for DNS here: the certificate can take over half an hour, and
+# provision checks the domain itself afterwards, with a useful message.
 resource "google_firebase_hosting_custom_domain" "this" {
   count    = var.domain == null ? 0 : 1
   provider = google-beta
@@ -57,28 +57,16 @@ resource "google_firebase_hosting_custom_domain" "this" {
 }
 
 locals {
-  domain = one(google_firebase_hosting_custom_domain.this)
-
-  # What Hosting wants published to serve the domain. A record marked REMOVE is
-  # one Hosting found and wants gone, which is the zone owner's decision. The
-  # certificate's ACME challenges are left out on purpose: Google describes them
-  # as a way to get a certificate before pointing traffic at Hosting, and the
-  # routing record goes out at the same time. Keeping them would also tie DNS to
-  # a value Firebase changes on its own while the certificate is pending.
-  wanted_records = local.domain == null ? [] : [
-    for record in flatten([
-      for update in local.domain.required_dns_updates : [for set in update.desired : set.records]
-    ]) : record if record.required_action != "REMOVE"
-  ]
-
-  # A name can have several values, and a value can be listed twice: the key is
-  # the whole record.
-  dns_records = {
-    for record in local.wanted_records :
-    lower("${record.type}-${trimsuffix(record.domain_name, ".")}-${substr(sha256(record.rdata), 0, 8)}") => {
-      name  = record.domain_name
-      type  = record.type
-      value = record.rdata
-    }...
+  # The record is computed rather than read from required_dns_updates: Firebase
+  # stops listing it there once the domain is active, and following that list
+  # would delete the live site's record on the next apply. A subdomain needs only
+  # this CNAME: it proves ownership, and the certificate follows without the ACME
+  # challenges, which are for moving a domain before its traffic.
+  dns_records = var.domain == null ? {} : {
+    routing = {
+      name  = var.domain
+      type  = "CNAME"
+      value = "${var.site_id}.web.app"
+    }
   }
 }

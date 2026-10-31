@@ -1,8 +1,7 @@
 # DNS records for a custom domain: validation (CNAME, or TXT for Static Web
-# Apps' token and Firebase) and routing (CNAME, or A/AAAA for Firebase). They
-# are DNS-only, never proxied: CloudFront, Static Web Apps and Firebase
-# terminate TLS with their own certificates, and validation needs the real
-# record values.
+# Apps' token) and routing. They are DNS-only, never proxied: CloudFront and
+# Static Web Apps terminate TLS with their own certificates, and validation
+# needs the real CNAME targets.
 
 resource "cloudflare_dns_record" "this" {
   for_each = var.records

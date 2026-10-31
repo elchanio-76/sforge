@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { get } from 'node:https';
 import { fileURLToPath } from 'node:url';
 import { ErrorCode, type FirebaseTargetConfig, SforgeError } from '@staticforge/core';
 import {
@@ -41,8 +42,6 @@ const DOMAIN_POLL_MS = 15_000;
 /** The certificate took over half an hour in the live runs; Firebase allows itself a day. */
 const CERTIFICATE_TIMEOUT_MS = 45 * 60_000;
 const OWNERSHIP_TIMEOUT_MS = 60 * 60_000;
-
-const ACTIVE_CERTIFICATES = new Set(['CERT_ACTIVE', 'CERT_EXPIRING_SOON']);
 
 export interface StateLocation {
   bucket: string;
@@ -153,9 +152,42 @@ export function describeRecords(outputs: Record<string, unknown>): string | unde
   );
   if (records.length === 0) return undefined;
   return [
-    'Create these DNS records (provisioning waits until Firebase sees them):',
+    'Create this DNS record (provisioning waits until Firebase sees it):',
     ...records.map((r) => `  ${r.name} ${r.type} ${r.type === 'TXT' ? `"${r.value}"` : r.value}`),
   ].join('\n');
+}
+
+/**
+ * Whether the domain answers over HTTPS with a valid certificate. Any status will do:
+ * a site with nothing deployed yet answers 404.
+ */
+export function answersOverHttps(domain: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const request = get(`https://${domain}/`, { agent: false, timeout: 15_000 }, (response) => {
+      response.resume();
+      resolve(true);
+    });
+    request.on('timeout', () => request.destroy());
+    request.on('error', () => resolve(false));
+  });
+}
+
+/**
+ * Firebase wants different records at the zone apex, and they could not be verified: the
+ * subdomain CNAME is what sforge computes. Without a DNS zone to compare with, a name of two
+ * labels is taken to be an apex.
+ */
+function assertNotApex(target: FirebaseTargetConfig, name: string): void {
+  const domain = target.domain;
+  if (domain === undefined) return;
+  const apex = target.dns !== undefined ? domain === target.dns.zone : domain.split('.').length < 3;
+  if (apex) {
+    throw new SforgeError(
+      ErrorCode.Unsupported,
+      `targets.${name}.domain ${domain} is the apex of its zone, which Firebase targets do not support yet`,
+      { hint: `Use a subdomain such as www.${domain}.` },
+    );
+  }
 }
 
 export interface FirebaseIacOptions {
@@ -163,6 +195,8 @@ export interface FirebaseIacOptions {
   pollIntervalMs?: number;
   ownershipTimeoutMs?: number;
   certificateTimeoutMs?: number;
+  /** Whether the domain answers over HTTPS (tests). */
+  httpsProbe?: (domain: string) => Promise<boolean>;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -194,6 +228,7 @@ export function createFirebaseIacProfile(
       const target = input.target as FirebaseTargetConfig;
       const name = input.targetName;
       assertPublic(target, name);
+      assertNotApex(target, name);
 
       const dns = await prepareDns(input, target.domain === undefined ? [] : [target.domain]);
       const project = projectName(input.config);
@@ -217,27 +252,6 @@ export function createFirebaseIacProfile(
         }
       }
 
-      // The records are read from the domain resource, and a map's keys must be known
-      // when planning. A provision creates the domain first (the pre-phase); a plan that
-      // has no pre-phase can only include the records once the domain exists.
-      let recordsKnown = true;
-      if (
-        dns !== undefined &&
-        target.domain !== undefined &&
-        !outputsOnly &&
-        input.purpose !== 'provision'
-      ) {
-        recordsKnown = await readDomain().then(
-          (domain) => domain !== undefined,
-          () => false,
-        );
-        if (!recordsKnown) {
-          input.logger.info(
-            `The DNS records of ${target.domain} are not planned: Firebase names them once the domain exists`,
-          );
-        }
-      }
-
       const base: IacSpec = {
         requiredProviders: { google: GOOGLE_PROVIDER, 'google-beta': GOOGLE_BETA_PROVIDER },
         providers: {
@@ -253,7 +267,7 @@ export function createFirebaseIacProfile(
         backend: gcsBackend(location.bucket, location.prefix),
       };
       let spec =
-        dns !== undefined && recordsKnown
+        dns !== undefined
           ? withDns(base, dns, [
               { name: 'dns_records', records: iacRef('module.site.dns_records') },
             ])
@@ -301,14 +315,14 @@ export function createFirebaseIacProfile(
         ...(adopt && { imports: [{ to: FIREBASE_PROJECT, id: target.project }] }),
         // Firebase keeps updating the domain's states and records on its own.
         ...(target.domain !== undefined && { expectedDrift: [`${CUSTOM_DOMAIN}[0]`] }),
-        ...(target.domain !== undefined && {
-          prePhase: {
-            targets: [CUSTOM_DOMAIN],
-            describe: dns === undefined ? describeRecords : () => undefined,
-            // With a DNS provider the records come next, in the full apply.
-            ...(dns === undefined && {
+        // Without a DNS provider the user creates the record, from what this prints.
+        ...(target.domain !== undefined &&
+          dns === undefined && {
+            prePhase: {
+              targets: [CUSTOM_DOMAIN],
+              describe: describeRecords,
               wait: async (_outputs, logger) => {
-                logger.info(`Waiting until Firebase sees the DNS records of ${target.domain}`);
+                logger.info(`Waiting until Firebase sees the DNS record of ${target.domain}`);
                 const seen = await pollDomain(
                   readDomain,
                   (d) => d.ownershipState === 'OWNERSHIP_ACTIVE' && d.hostState === 'HOST_ACTIVE',
@@ -318,29 +332,32 @@ export function createFirebaseIacProfile(
                 if (!seen) {
                   throw new SforgeError(
                     ErrorCode.DeployFailed,
-                    `Firebase does not see the DNS records of ${target.domain} yet`,
+                    `Firebase does not see the DNS record of ${target.domain} yet`,
                     {
-                      hint: 'Check them, then run provision again. Name servers can take a while to catch up.',
+                      hint: 'Check it, then run provision again. Name servers can take a while to catch up.',
                     },
                   );
                 }
               },
-            }),
-          },
+            },
+          }),
+        ...(target.domain !== undefined && {
           postApply: async (_outputs, logger) => {
-            const domain = await readDomain();
-            if (ACTIVE_CERTIFICATES.has(domain?.cert?.state ?? '')) return;
-            logger.info(`Waiting for the certificate of ${target.domain}`);
-            const ready = await pollDomain(
-              readDomain,
-              (d) => ACTIVE_CERTIFICATES.has(d.cert?.state ?? ''),
-              options.certificateTimeoutMs ?? CERTIFICATE_TIMEOUT_MS,
-              pollMs,
-            );
-            if (ready) return;
+            const domain = target.domain!;
+            const secure = options.httpsProbe ?? answersOverHttps;
+            if (await secure(domain)) return;
+            logger.info(`Waiting for the certificate of ${domain}`);
+            // Asking the domain itself: the live runs served a valid certificate while
+            // Firebase's API still did not report it as active.
+            const deadline = Date.now() + (options.certificateTimeoutMs ?? CERTIFICATE_TIMEOUT_MS);
+            while (Date.now() < deadline) {
+              await sleep(pollMs);
+              if (await secure(domain)) return;
+            }
+            const state = await readDomain().catch(() => undefined);
             // Not a failure: the site works at *.web.app, and Firebase keeps trying.
             return [
-              `Firebase has not issued the certificate of ${target.domain} yet; it can take up to 24 hours. The site is already served at https://${site}.web.app.`,
+              `Firebase has not issued the certificate of ${domain} yet (host ${state?.hostState ?? 'unknown'}, ownership ${state?.ownershipState ?? 'unknown'}, certificate ${state?.cert?.state ?? 'unknown'}); it can take up to 24 hours. The site is already served at https://${site}.web.app.`,
             ];
           },
         }),

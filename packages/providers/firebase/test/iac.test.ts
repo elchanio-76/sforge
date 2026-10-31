@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ErrorCode, createLogger } from '@staticforge/core';
 import type { DnsProfile, IacSpec, PreparedTarget, ProfileInput } from '@staticforge/iac';
 import {
+  type FirebaseIacOptions,
   GoogleApiError,
   createFirebaseIacProfile,
   describeRecords,
@@ -27,6 +28,7 @@ const WITH_DOMAIN = { domain: 'firebase.example.com', dns: CLOUDFLARE };
 function prepare(
   target: Record<string, unknown> = {},
   overrides: Partial<ProfileInput> & { fake?: FakeFirebase } = {},
+  options: FirebaseIacOptions = {},
 ): Promise<PreparedTarget> {
   const { fake = fakeFirebase(), ...rest } = overrides;
   const config = firebaseConfig(target);
@@ -34,6 +36,7 @@ function prepare(
     pollIntervalMs: 1,
     ownershipTimeoutMs: 20,
     certificateTimeoutMs: 20,
+    ...options,
   }).prepare({
     rootDir: '/nowhere',
     config,
@@ -186,9 +189,9 @@ describe('a project that already uses Firebase', () => {
 });
 
 describe('a custom domain', () => {
-  it('creates the domain first, then the records it names', async () => {
+  it('creates the record in the same apply, with no pre-phase', async () => {
     const { spec, prePhase, expectedDrift } = await prepare(WITH_DOMAIN);
-    expect(prePhase?.targets).toEqual(['module.site.google_firebase_hosting_custom_domain.this']);
+    expect(prePhase).toBeUndefined();
     expect(moduleNames(spec)).toEqual(['dns_records']);
     expect(spec.additionalModules?.[0]?.inputs.records).toEqual({
       ref: 'module.site.dns_records',
@@ -196,30 +199,26 @@ describe('a custom domain', () => {
     expect(expectedDrift).toEqual(['module.site.google_firebase_hosting_custom_domain.this[0]']);
   });
 
-  it('prints nothing and does not wait when sforge manages the records', async () => {
-    const { prePhase } = await prepare(WITH_DOMAIN);
-    expect(prePhase?.describe({ dns_records: { a: { name: 'x', type: 'A', value: '1' } } })).toBe(
-      undefined,
-    );
-    expect(prePhase?.wait).toBeUndefined();
+  it('includes the record in a plan even before the domain exists', async () => {
+    const { spec } = await prepare(WITH_DOMAIN, { purpose: 'plan' });
+    expect(moduleNames(spec)).toEqual(['dns_records']);
   });
 
-  it('prints the records and waits for them when the user manages DNS', async () => {
+  it('prints the record and waits for it when the user manages DNS', async () => {
     const fake = fakeFirebase();
     fake.domain = { ownershipState: 'OWNERSHIP_ACTIVE', hostState: 'HOST_ACTIVE' };
     const { prePhase } = await prepare({ domain: 'firebase.example.com' }, { fake });
+    expect(prePhase?.targets).toEqual(['module.site.google_firebase_hosting_custom_domain.this']);
     const notice = prePhase?.describe({
       dns_records: {
-        a: { name: 'firebase.example.com', type: 'A', value: '199.36.158.100' },
-        b: { name: 'firebase.example.com', type: 'TXT', value: 'hosting-site=x' },
+        routing: { name: 'firebase.example.com', type: 'CNAME', value: 'docs-prod.web.app' },
       },
     });
-    expect(notice).toContain('firebase.example.com A 199.36.158.100');
-    expect(notice).toContain('firebase.example.com TXT "hosting-site=x"');
+    expect(notice).toContain('firebase.example.com CNAME docs-prod.web.app');
     await expect(prePhase?.wait?.({}, logger)).resolves.toBeUndefined();
   });
 
-  it('fails with what to do when the records never show up', async () => {
+  it('fails with what to do when the record never shows up', async () => {
     const fake = fakeFirebase();
     fake.domain = { ownershipState: 'OWNERSHIP_PENDING', hostState: 'HOST_UNHOSTED' };
     const { prePhase } = await prepare({ domain: 'firebase.example.com' }, { fake });
@@ -230,26 +229,6 @@ describe('a custom domain', () => {
 
   it('has nothing to print without records', () => {
     expect(describeRecords({})).toBeUndefined();
-  });
-
-  it('leaves the records out of a plan until the domain exists', async () => {
-    // A map's keys must be known when planning, and there is no pre-phase in a plan.
-    const fresh = await prepare(WITH_DOMAIN, { purpose: 'plan' });
-    expect(moduleNames(fresh.spec)).toEqual([]);
-
-    const fake = fakeFirebase();
-    fake.domain = { hostState: 'HOST_ACTIVE' };
-    const existing = await prepare(WITH_DOMAIN, { fake, purpose: 'plan' });
-    expect(moduleNames(existing.spec)).toEqual(['dns_records']);
-  });
-
-  it('treats a domain it cannot read yet as not existing', async () => {
-    const fake = fakeFirebase();
-    fake.api.getCustomDomain = async () => {
-      throw new GoogleApiError('the API is off', 403);
-    };
-    const { spec } = await prepare(WITH_DOMAIN, { fake, purpose: 'plan' });
-    expect(moduleNames(spec)).toEqual([]);
   });
 
   it('checks the domain is in the zone', async () => {
@@ -264,23 +243,46 @@ describe('a custom domain', () => {
     });
   });
 
-  it('returns at once when the certificate is there', async () => {
-    const fake = fakeFirebase();
-    fake.domain = { cert: { state: 'CERT_ACTIVE' } };
-    const { postApply } = await prepare(WITH_DOMAIN, { fake });
+  it.each([
+    ['the zone itself', { domain: 'example.com', dns: CLOUDFLARE }],
+    ['a name of two labels, without a zone', { domain: 'example.com' }],
+  ])('refuses an apex domain: %s', async (_name, target) => {
+    await expect(prepare(target)).rejects.toMatchObject({ code: ErrorCode.Unsupported });
+  });
+
+  it('returns at once when the domain already answers over HTTPS', async () => {
+    const { postApply } = await prepare(WITH_DOMAIN, {}, { httpsProbe: async () => true });
     await expect(postApply?.({}, logger)).resolves.toBeUndefined();
+  });
+
+  it('believes the domain itself over what the API says about the certificate', async () => {
+    const fake = fakeFirebase();
+    fake.domain = { cert: { state: 'CERT_PROPAGATING' } };
+    const answers = [false, false, true];
+    const { postApply } = await prepare(
+      WITH_DOMAIN,
+      { fake },
+      { httpsProbe: async () => answers.shift() ?? true, certificateTimeoutMs: 5000 },
+    );
+    await expect(postApply?.({}, logger)).resolves.toBeUndefined();
+    expect(answers).toEqual([]);
   });
 
   it('does not fail when the certificate takes long: the site works without the domain', async () => {
     const fake = fakeFirebase();
-    fake.domain = { cert: { state: 'CERT_PREPARING' } };
-    const { postApply } = await prepare(WITH_DOMAIN, { fake });
+    fake.domain = {
+      hostState: 'HOST_ACTIVE',
+      ownershipState: 'OWNERSHIP_ACTIVE',
+      cert: { state: 'CERT_PREPARING' },
+    };
+    const { postApply } = await prepare(WITH_DOMAIN, { fake }, { httpsProbe: async () => false });
     const notices = await postApply?.({}, logger);
     expect(notices?.[0]).toContain('has not issued the certificate');
+    expect(notices?.[0]).toContain('certificate CERT_PREPARING');
     expect(notices?.[0]).toContain('https://docs-prod.web.app');
   });
 
-  it('has no pre-phase without a domain', async () => {
+  it('has nothing to wait for without a domain', async () => {
     const { prePhase, postApply, expectedDrift } = await prepare();
     expect(prePhase).toBeUndefined();
     expect(postApply).toBeUndefined();

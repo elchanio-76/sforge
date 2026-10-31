@@ -180,13 +180,7 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
       if (domain !== undefined && dnsZone !== undefined) {
         expect(url).toBe(`https://${domain}`);
         const records = await cloudflareRecords(dnsZone, id);
-        if (provider === 'firebase') {
-          // Firebase names the records itself: routing and ownership on the domain.
-          expect(records.filter((r) => r.startsWith(`${domain} `)).length).toBeGreaterThan(0);
-          process.stderr.write(`Records Firebase asked for: ${records.join(', ')}\n`);
-        } else {
-          expect(records).toContain(`${domain} CNAME`);
-        }
+        expect(records).toContain(`${domain} CNAME`);
         if (provider === 'aws') {
           // Certificate validation for the domain and the preview wildcard, and the wildcard itself.
           expect(records).toContain(`*.${previewDomain} CNAME`);
@@ -305,6 +299,13 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
       const status = await sforge(dir, 'status', target);
       expect(status.drifted).toBe(false);
       expect(status.versionId).toBe(second.versionId);
+
+      if (provider === 'firebase') {
+        // Firebase's view of the domain changes once it is active: nothing may follow it.
+        const later = await sforge(dir, 'provision', target, '--diff');
+        expect(later.plan.resources).toEqual([]);
+        expect(later.plan.changes).toBe(false);
+      }
 
       const versions = await sforge(dir, 'versions', target);
       expect(versions.versions.filter((v: { preview: boolean }) => !v.preview)).toHaveLength(2);

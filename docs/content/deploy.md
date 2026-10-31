@@ -500,15 +500,16 @@ prod: {
 },
 ```
 
-Firebase names the DNS records it wants only once the domain exists (for a subdomain, a CNAME). So
-`provision` creates the domain, then the records (through [Cloudflare](#dns-records-in-cloudflare)), then waits for the
-certificate, up to 45 minutes (it took a little over half an hour when we tested). If that takes
-longer, `provision` says so and succeeds: Firebase keeps trying for up to a day, and the site is
-already served at its `web.app` URL. For a few minutes after that, some requests can still get
-Firebase's own certificate, depending on the edge that answers.
+The domain must be a subdomain: an apex (`example.com`) fails with `SF_UNSUPPORTED`. `provision`
+creates the domain and a CNAME to `<site>.web.app` (through
+[Cloudflare](#dns-records-in-cloudflare)), then waits until the domain answers over HTTPS, up to 45
+minutes (it took a little over half an hour when we tested). If that takes longer, `provision` says
+so and succeeds: Firebase keeps trying for up to a day, and the site is already served at its
+`web.app` URL. For a few minutes after the first answer, some requests can still get Firebase's own
+certificate, depending on the edge that answers.
 
-Without `dns`, `provision` prints the records and waits until Firebase sees them; `--no-wait` stops
-after printing. On a project's first `provision --diff`, the plan cannot show the records yet.
+Without `dns`, `provision` prints the record and waits until Firebase sees it; `--no-wait` stops
+after printing.
 
 ### Deploying, versions and rollback
 
