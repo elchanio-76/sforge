@@ -95,7 +95,8 @@ only tokens of this repository.
 
 On Firebase, the service account has `roles/firebasehosting.admin` on the project, because Hosting
 has no role for a single site: CI can deploy every site in that project. Give sites that need
-isolating a project of their own. On the state bucket it can only read its own target's state.
+isolating a project of their own. On a Firebase target with a custom domain, a preview URL in the pull request comment may not
+serve at first: see the [known issue](deploy.md#previews-1). On the state bucket it can only read its own target's state.
 
 Repositories created since July 2026 (and older ones that opted in) use **immutable subjects**,
 which add the owner's and the repository's numeric IDs: `repo:acme@1001/docs@2002:pull_request`.

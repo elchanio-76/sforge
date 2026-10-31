@@ -533,6 +533,11 @@ the channel is created before the build. Channels expire `previewTtlDays` after 
 `live` is the production channel and cannot be used as a preview ID. Preview pages get
 `<meta name="robots" content="noindex">`.
 
+> **Known issue:** on a target with a custom domain, a new preview channel sometimes answers
+> Firebase's "Site Not Found", for at least ten minutes when we measured it. This happened to 3 of 10
+> channels in our tests, and to none of 14 on targets without a domain. The cause is unknown, and
+> production was not affected. Check a preview's URL before relying on it.
+
 ### Destroying
 
 `sforge destroy prod --confirm prod` removes the site, its domain and its DNS records. The state
