@@ -27,6 +27,8 @@ import {
 const provider = process.env.SFORGE_LIVE as 'aws' | 'azure' | 'firebase' | undefined;
 const parentDomain = process.env.SFORGE_LIVE_DOMAIN;
 const dnsZone = process.env.SFORGE_LIVE_DNS_ZONE;
+/** Firebase: create this many channels in a row, to measure how often one is not served. */
+const previewTrials = Number(process.env.SFORGE_LIVE_PREVIEW_TRIALS ?? 0);
 
 /** A request on a connection of its own: fails when this edge has no valid certificate yet. */
 const freshRequest = (url: string) =>
@@ -41,25 +43,60 @@ const freshRequest = (url: string) =>
  * Poll a page of a new preview until it is served, recording the first refusal and how long
  * it took: Firebase's own "Site Not Found" and the site's 404 page mean different things.
  */
-async function servedPreview(pageUrl: string, timeoutMs: number): Promise<Response> {
+async function servedPreview(
+  pageUrl: string,
+  timeoutMs: number,
+  explain?: () => Promise<unknown>,
+): Promise<Response> {
   const started = Date.now();
   let reported = false;
-  const response = await eventually(async () => {
-    const answer = await fetch(pageUrl, { redirect: 'manual' });
-    if (answer.status !== 200) {
-      const body = (await answer.text()).replace(/\s+/g, ' ').slice(0, 200);
-      const headers = ['cache-control', 'age', 'x-cache', 'x-served-by']
-        .map((name) => `${name}=${answer.headers.get(name)}`)
-        .join(' ');
-      const failure = `${pageUrl} → ${answer.status} (${headers}): ${body}`;
-      if (!reported) process.stderr.write(`First answer: ${failure}\n`);
-      reported = true;
-      throw new Error(failure);
+  try {
+    const response = await eventually(async () => {
+      const answer = await fetch(pageUrl, { redirect: 'manual' });
+      if (answer.status !== 200) {
+        const body = (await answer.text()).replace(/\s+/g, ' ').slice(0, 200);
+        const headers = ['cache-control', 'age', 'x-cache', 'x-served-by']
+          .map((name) => `${name}=${answer.headers.get(name)}`)
+          .join(' ');
+        const failure = `${pageUrl} → ${answer.status} (${headers}): ${body}`;
+        if (!reported) process.stderr.write(`First answer: ${failure}\n`);
+        reported = true;
+        throw new Error(failure);
+      }
+      return answer;
+    }, timeoutMs);
+    process.stderr.write(`${pageUrl} served after ${Math.round((Date.now() - started) / 1000)}s\n`);
+    return response;
+  } catch (error) {
+    if (explain !== undefined) {
+      const state = await explain().catch((e: unknown) => String(e));
+      process.stderr.write(`What Firebase says about it: ${JSON.stringify(state)}\n`);
     }
-    return answer;
-  }, timeoutMs);
-  process.stderr.write(`${pageUrl} served after ${Math.round((Date.now() - started) / 1000)}s\n`);
-  return response;
+    throw error;
+  }
+}
+
+/** A channel as the API sees it: is anything released on it? */
+async function channelState(project: string, dir: string, target: string, channel: string) {
+  const { defaultClients } = await import('@staticforge/firebase');
+  const cached = JSON.parse(
+    readFileSync(join(dir, '.sforge', 'state', `${target}.json`), 'utf8'),
+  ) as { outputs: { site_id: string } };
+  const site = cached.outputs.site_id;
+  const hosting = defaultClients().hosting(project);
+  const found = await hosting.getChannel(site, channel);
+  const releases = await hosting.listReleases(site, channel);
+  return {
+    channel: found ?? null,
+    releases: releases.map((r) => ({
+      name: r.name,
+      type: r.type,
+      time: r.releaseTime,
+      version: r.version?.name,
+      status: r.version?.status,
+      files: r.version?.fileCount,
+    })),
+  };
 }
 
 // SFORGE_LIVE_AUTH runs the private-site cycle instead (live-auth.integration.test.ts).
@@ -349,7 +386,11 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
         const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-1', '--no-headless');
         const previewUrl = String(preview.url).replace(/\/$/, '');
         const html = await (
-          await servedPreview(`${previewUrl}/`, provider === 'firebase' ? 10 * MINUTE : 2 * MINUTE)
+          await servedPreview(
+            `${previewUrl}/`,
+            provider === 'firebase' ? 10 * MINUTE : 2 * MINUTE,
+            provider === 'firebase' ? () => channelState(account, dir, target, 'pr-1') : undefined,
+          )
         ).text();
         if (provider === 'firebase') {
           // The build knew the channel's URL, which only Firebase can name.
@@ -367,6 +408,37 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
       },
     );
 
+    it.runIf(provider === 'firebase' && previewTrials > 0)(
+      'serves every new preview channel',
+      async () => {
+        requireUrl();
+        const refused: string[] = [];
+        for (let i = 1; i <= previewTrials; i++) {
+          const id = `trial-${i}`;
+          const preview = await sforge(
+            dir,
+            'deploy',
+            target,
+            '--preview',
+            id,
+            '--no-headless',
+            '--no-check',
+          );
+          const previewUrl = String(preview.url).replace(/\/$/, '');
+          try {
+            await servedPreview(`${previewUrl}/`, 3 * MINUTE, () =>
+              channelState(account, dir, target, id),
+            );
+          } catch {
+            refused.push(id);
+          }
+          await sforge(dir, 'preview-destroy', target, id);
+        }
+        process.stderr.write(`Channels not served: ${refused.length} of ${previewTrials}\n`);
+        expect(refused).toEqual([]);
+      },
+    );
+
     it.runIf(provider === 'firebase')(
       'serves URLs without a trailing slash when the build asks for that',
       async () => {
@@ -381,7 +453,9 @@ describe.runIf(provider !== undefined && process.env.SFORGE_LIVE_AUTH === undefi
         try {
           const preview = await sforge(dir, 'deploy', target, '--preview', 'pr-2', '--no-headless');
           const previewUrl = String(preview.url).replace(/\/$/, '');
-          const page = await servedPreview(`${previewUrl}/about`, 10 * MINUTE);
+          const page = await servedPreview(`${previewUrl}/about`, 10 * MINUTE, () =>
+            channelState(account, dir, target, 'pr-2'),
+          );
           expect(page.headers.get('content-type')).toContain('text/html');
           const redirect = await fetch(`${previewUrl}/about/`, { redirect: 'manual' });
           expect([301, 302, 307, 308]).toContain(redirect.status);

@@ -589,6 +589,9 @@ SFORGE_LIVE=azure SFORGE_LIVE_CONFIRM=<subscription id> pnpm test:live   # eastu
 SFORGE_LIVE=firebase SFORGE_LIVE_CONFIRM=<project id> pnpm test:live     # gcloud's project, or SFORGE_LIVE_PROJECT
 ```
 
+On Firebase, `SFORGE_LIVE_PREVIEW_TRIALS=<n>` also creates and removes `n` preview channels in a row
+and reports how many were not served.
+
 Provisioning CloudFront takes several minutes, so an AWS run takes about 10–20 minutes. Run it
 in a sandbox account or subscription.
 
