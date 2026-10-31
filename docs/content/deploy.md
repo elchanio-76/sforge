@@ -515,14 +515,17 @@ after printing.
 
 `deploy` creates a Hosting version and uploads only the files Firebase does not have yet, gzipped.
 Firebase compares content, so `uploaded` in the result counts new files, and `copied` the rest.
-Headers go in the version's configuration: the `security` options, and the cache class of each file.
+Headers go in the version's configuration: the `security` options, and the cache class of each file. On
+`*.web.app`, Firebase sends its own `Strict-Transport-Security` (a one-year `max-age`, with
+`includeSubDomains` and `preload`) instead of the one `security.hsts` asks for.
 A site with more than 1,000 fingerprinted files outside fully fingerprinted directories gets a
 warning: the rest revalidate rather than being cached for a year.
 
 Rollback releases an earlier version again, in seconds and with no rebuild. Firebase's own release
 history is the history: `sforge versions` lists it, newest first, including versions deployed with
 other tools (under Firebase's ID for them). There is no `versions.json`. `--to` takes a version ID
-or at least four characters of its commit. `retainVersions` sets how many versions the site keeps;
+or at least four characters of its commit. The file count and size of a new version can show as 0 for a
+few minutes: Firebase calculates them after the release. `retainVersions` sets how many versions the site keeps;
 older ones are deleted, so they can no longer be rolled back to.
 
 ### Previews

@@ -100,6 +100,7 @@ const SYMBOLS: Record<string, string> = {
   replace: '-/+',
   read: '<=',
   move: '->',
+  import: '<-',
   noop: ' ',
 };
 

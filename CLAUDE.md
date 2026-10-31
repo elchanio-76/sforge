@@ -7,9 +7,10 @@ learned the hard way. It does not repeat what lives elsewhere:
 - [README.md](README.md): install, development commands, packages, the CLI contract (`--json`
   envelope, `SF_*` error codes, exit codes, non-interactive rules) and the command list.
 - [PLAN.md](PLAN.md): the living design document. §1–§14 describe the design per package, §15
-  the milestones (M0–M10 and M12 done; 0.3.1 released), §16 end-to-end verification, §17 the M9 plan with
-  "Done / As built / Found and fixed" notes per step, §18 the M10 plan (private sites), §19 the
-  M11 plan (Firebase Hosting) and §20 the M12 plan (code review).
+  the milestones (M0–M10 and M12 done; M11 verified, `0.4.0-rc.1` released), §16 end-to-end
+  verification, §17 the M9 plan with "Done / As built / Found and fixed" notes per step, §18 the
+  M10 plan (private sites), §19 the M11 plan (Firebase Hosting, with its live findings in §19 G)
+  and §20 the M12 plan (code review).
 - [RELEASING.md](RELEASING.md): npm trusted publishing, adding a package, every release.
 - `docs/content/*.md`: user docs (a staticforge site): `deploy.md` (AWS, Azure, Cloudflare DNS,
   remote state, live tests), `ci.md` (`sforge ci init`, OIDC subjects), `checker.md`, `mcp.md`.
@@ -77,7 +78,8 @@ CLIs (`aws sts get-caller-identity`, `az account show`) or the Cloudflare MCP.
   git cannot start `ssh` from outside the repository directory, so clone other repositories over
   HTTPS and then switch the remote to `git@github.com:…`.
 - **CI test repository** `elchanio-76/sforge-ci-test` (public, npm, environment `production`
-  with the user as reviewer, `main` only): used in M9 to verify `sforge ci init` (PLAN §17 F).
+  with the user as reviewer, `main` only): used in M9 and M11 to verify `sforge ci init` (PLAN §17
+  F, §19 G).
   Its cloud resources are destroyed and its three workflows are disabled; re-provisioning
   requires re-enabling them and new repository variables (`sforge ci init` prints them).
   Pushing a workflow-only change with `[skip ci]` avoids triggering deploys.
@@ -137,6 +139,18 @@ invalid`) and does not retry: the Azure profile applies the app and CNAME first,
   have their own domains.
 - `apply` logs "Drift detected" for resources it has just created (azuread, the SWA after its
   custom domain); a following `provision --diff` shows no changes. Cosmetic; not yet filtered.
+
+Firebase (M11):
+
+- Never follow values Firebase reports about a domain in Terraform: it stops listing the CNAME in
+  `required_dns_updates` once the domain is active, which would delete the live record. The module
+  computes the CNAME instead. `cert.state` is unreliable too: `provision` asks the domain itself.
+- `google_client_openid_userinfo` silently returns a null email with `user_project_override`.
+- Known issue, unexplained: new preview channels on custom-domain targets sometimes answer "Site
+  Not Found" (3 of 10; 0 of 14 without a domain). `SFORGE_LIVE_PREVIEW_TRIALS=<n>` measures it, and
+  the live test reads the channel through the API when one fails.
+- `echo >> .envrc` glues onto a file with no trailing newline, and the token then reads as invalid.
+  `/user/tokens/verify` rejects account-owned Cloudflare tokens: test with a zone lookup instead.
 
 Live tests (`pnpm test:live`, see `docs/content/deploy.md` "Live tests") create and destroy real
 resources (about 11–12 minutes per cloud, with a custom domain); they need the user's approval,
