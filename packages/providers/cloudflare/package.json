@@ -1,6 +1,6 @@
 {
   "name": "@staticforge/cloudflare",
-  "version": "0.4.0-rc.1",
+  "version": "0.4.0",
   "description": "Cloudflare DNS for staticforge: the records of custom domains, managed with OpenTofu/Terraform",
   "keywords": [
     "staticforge",
