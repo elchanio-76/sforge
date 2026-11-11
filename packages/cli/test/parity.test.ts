@@ -1,4 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
@@ -636,6 +643,43 @@ describe('CLI ↔ MCP drift guard', () => {
     // Tools that have no command of their own.
     const extra = ['sforge_fix_preview', 'sforge_dev_stop'];
     expect(names.sort()).toEqual([...Object.values(MAPPED), ...extra].sort());
+  });
+
+  it('keeps the agent skill in step with the tools', async () => {
+    const mcp = createSforgeMcp({ run, cwd: tmpdir(), env: {}, allowInfra: true });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await mcp.createServer().connect(serverTransport);
+    const client = new Client({ name: 'drift', version: '1.0.0' });
+    await client.connect(clientTransport);
+    closers.push(async () => {
+      await client.close();
+      await mcp.close();
+    });
+    const tools = (await client.listTools()).tools.map((t) => t.name).sort();
+
+    // The skill ships in the package (skills/sforge) and copies the tool list, so a
+    // new, renamed or removed tool must be reflected in it.
+    const dir = join(import.meta.dirname, '..', 'skills', 'sforge');
+    const skill = readFileSync(join(dir, 'SKILL.md'), 'utf8');
+    expect(skill).toMatch(/^---\nname: sforge\ndescription: \S/);
+    const files = [
+      skill,
+      ...readdirSync(join(dir, 'references')).map((f) =>
+        readFileSync(join(dir, 'references', f), 'utf8'),
+      ),
+    ];
+    const named = new Set(files.flatMap((text) => text.match(/\bsforge_[a-z_]+\b/g) ?? []));
+    expect(
+      tools.filter((name) => !skill.includes(`\`${name}\``)),
+      'tools SKILL.md does not name',
+    ).toEqual([]);
+    expect(
+      [...named].filter((name) => !tools.includes(name)),
+      'names in the skill that are not tools',
+    ).toEqual([]);
+    for (const [, link] of skill.matchAll(/\]\((references\/[^)]+)\)/g)) {
+      expect(existsSync(join(dir, link ?? '')), link).toBe(true);
+    }
   });
 
   it('accounts for every option of a mapped command', () => {

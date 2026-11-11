@@ -40,7 +40,8 @@
   },
   "files": [
     "dist",
-    "schema"
+    "schema",
+    "skills"
   ],
   "engines": {
     "node": "^22.22.0 || >=24.8.0"

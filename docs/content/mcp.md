@@ -47,6 +47,18 @@ Cloud tools use the credentials of the environment the server starts in (AWS pro
 environment variables; `az login` for Azure), like the CLI. Start the client from a shell where
 they are set.
 
+### The agent skill
+
+The `staticforge` package ships an [Agent Skill](https://agentskills.io) that teaches an agent
+the tools, the edit and check loop, how to fix each diagnostic, the confirmation rules for live
+changes, and the known limitations. Copy it into the project for Claude Code:
+
+```sh
+mkdir -p .claude/skills && cp -r node_modules/staticforge/skills/sforge .claude/skills/
+```
+
+Other clients that read skills take the same directory. Copy it again after upgrading sforge.
+
 ## Tools
 
 | Tool                           | Runs                           | Notes                                                                             |
