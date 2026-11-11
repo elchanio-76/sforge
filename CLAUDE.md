@@ -7,10 +7,10 @@ learned the hard way. It does not repeat what lives elsewhere:
 - [README.md](README.md): install, development commands, packages, the CLI contract (`--json`
   envelope, `SF_*` error codes, exit codes, non-interactive rules) and the command list.
 - [PLAN.md](PLAN.md): the living design document. §1–§14 describe the design per package, §15
-  the milestones (M0–M12 done; 0.4.0 released), §16 end-to-end
+  the milestones (M0–M13 done; 0.4.1 released), §16 end-to-end
   verification, §17 the M9 plan with "Done / As built / Found and fixed" notes per step, §18 the
-  M10 plan (private sites), §19 the M11 plan (Firebase Hosting, with its live findings in §19 G)
-  and §20 the M12 plan (code review).
+  M10 plan (private sites), §19 the M11 plan (Firebase Hosting, with its live findings in §19 G),
+  §20 the M12 plan (code review) and §21 M13 (the agent skill).
 - [RELEASING.md](RELEASING.md): npm trusted publishing, adding a package, every release.
 - `docs/content/*.md`: user docs (a staticforge site): `deploy.md` (AWS, Azure, Cloudflare DNS,
   remote state, live tests), `ci.md` (`sforge ci init`, OIDC subjects), `checker.md`, `mcp.md`.
