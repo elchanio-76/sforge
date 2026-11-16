@@ -8,8 +8,11 @@
 - serves a local preview with live reload and fast incremental rebuilds,
 - provisions and deploys to AWS (private S3 + CloudFront), Azure Static Web Apps and Firebase Hosting,
 - offers all of this to AI agents as an MCP server, and to scripts as JSON with schemas.
+- supports AWS S3 static sites with access control through Cognito, Azure SWA free tier with access
+  control through e-mail invites/Github and Firebase free tier (no custom domains)
+- DNS provider currently supported: Cloudflare.
 
-> **Status:** early development (milestone M8: hardening and the first npm release). See [PLAN.md](PLAN.md) for the design and roadmap.
+> **Status:** early stable (milestone M13: Agent Skill). See [PLAN.md](PLAN.md) for the design and current limitations. 
 
 ## Install
 
