@@ -61,7 +61,7 @@
     "@staticforge/firebase": "workspace:*",
     "@staticforge/iac": "workspace:*",
     "@staticforge/provider-api": "workspace:*",
-    "commander": "^15.0.0",
+    "commander": "^15.1.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
