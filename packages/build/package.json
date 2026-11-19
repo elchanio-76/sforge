@@ -38,10 +38,10 @@
     "@staticforge/content": "workspace:*",
     "@staticforge/core": "workspace:*",
     "@staticforge/render": "workspace:*",
-    "hast-util-from-html": "^2.0.3",
+    "hast-util-from-html": "^2.1.0",
     "hast-util-minify-whitespace": "^1.0.1",
-    "hast-util-to-html": "^9.0.5",
-    "hastscript": "^9.0.1",
+    "hast-util-to-html": "^9.0.6",
+    "hastscript": "^9.0.3",
     "unist-util-visit": "^5.2.0",
     "yaml": "^2.9.1"
   },
